@@ -171,7 +171,6 @@ def simulate_scorers(team, goals):
     scorers.sort(key=lambda x: int(x.split('(')[1].split("'")[0]))
     return scorers
 
-# DÜZELTİLEN FONKSİYON (Syntax Error Çözümü)
 def generate_live_stats(home, away, hg, ag):
     base_poss = 50
     if hg > ag:
@@ -204,7 +203,6 @@ def generate_live_stats(home, away, hg, ag):
         'Faul': (np.random.randint(4, 15), np.random.randint(4, 15))
     }
 
-# DÜZELTİLEN FONKSİYON (Syntax Error Çözümü)
 def draw_stat_bar(stat_name, h_val, a_val):
     total = h_val + a_val
     if total == 0:
@@ -229,7 +227,75 @@ def draw_stat_bar(stat_name, h_val, a_val):
     """, unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# 4. SAYFA YÖNETİMİ
+# 4. GELİŞMİŞ ANALİZ GRAFİK FONKSİYONLARI (YENİ EKLENDİ)
+# ---------------------------------------------------------
+def plot_title_race(history_df, all_teams):
+    if history_df.empty: return
+    points = {t: [0] for t in all_teams}
+    matches_per_week = len(all_teams) // 2
+    current_week = 0; match_counter = 0; temp_points = {t: 0 for t in all_teams}
+    
+    for _, row in history_df.iterrows():
+        h, a = row['Ev'], row['Dep']; hg, ag = row['HG'], row['AG']
+        if hg > ag: temp_points[h] += 3
+        elif ag > hg: temp_points[a] += 3
+        else: temp_points[h] += 1; temp_points[a] += 1
+        
+        match_counter += 1
+        if match_counter % matches_per_week == 0:
+            current_week += 1
+            for t in all_teams: points[t].append(temp_points[t])
+            
+    race_df = pd.DataFrame(points)
+    top_teams = sorted(temp_points, key=temp_points.get, reverse=True)[:6]
+    fig, ax = plt.subplots(figsize=(10, 5))
+    for team in top_teams: ax.plot(race_df[team], label=team, linewidth=2.5)
+    ax.set_title("🏆 Şampiyonluk Yarışı (Haftalık Puan)")
+    ax.set_xlabel("Hafta"); ax.set_ylabel("Puan"); ax.legend(); ax.grid(True, linestyle='--', alpha=0.3)
+    st.pyplot(fig)
+
+def plot_attack_vs_defense(table_df):
+    fig, ax = plt.subplots(figsize=(10, 6))
+    sns.scatterplot(data=table_df, x='GF', y='GA', s=100, hue='Pts', palette='viridis', legend=False, ax=ax)
+    avg_gf = table_df['GF'].mean(); avg_ga = table_df['GA'].mean()
+    ax.axvline(avg_gf, color='gray', linestyle='--', alpha=0.5)
+    ax.axhline(avg_ga, color='gray', linestyle='--', alpha=0.5)
+    for i in range(table_df.shape[0]): 
+        ax.text(table_df.GF[i]+0.5, table_df.GA[i], table_df.index[i], fontsize=8, color='white')
+    ax.set_title("🛡️ Hücum vs. Defans (GF vs GA)")
+    ax.set_xlabel("Atılan Gol"); ax.set_ylabel("Yenilen Gol (Ters)"); ax.invert_yaxis()
+    st.pyplot(fig)
+
+def plot_top_scorers(history_df):
+    all_goals = []
+    for _, row in history_df.iterrows():
+        if 'Ev_Goller' in row and isinstance(row['Ev_Goller'], list):
+            for g in row['Ev_Goller']: 
+                name = g.split('(')[0].replace('⚽', '').strip()
+                all_goals.append({'Name': name, 'Team': row['Ev']})
+        if 'Dep_Goller' in row and isinstance(row['Dep_Goller'], list):
+            for g in row['Dep_Goller']: 
+                name = g.split('(')[0].replace('⚽', '').strip()
+                all_goals.append({'Name': name, 'Team': row['Dep']})
+    
+    if not all_goals: st.warning("Gol verisi yok."); return
+    df_goals = pd.DataFrame(all_goals)
+    top_scorers = df_goals['Name'].value_counts().head(10).reset_index()
+    top_scorers.columns = ['Name', 'Goals']
+    fig, ax = plt.subplots(figsize=(10, 6))
+    sns.barplot(x='Goals', y='Name', data=top_scorers, palette='magma', ax=ax)
+    ax.set_title('🥇 Gol Krallığı'); st.pyplot(fig)
+
+def plot_feature_importance():
+    feature_names = ['Home_Shots', 'Home_SOT', 'Home_Corners', 'Home_Possession', 'Home_FIFA_Overall', 'Home_FIFA_Attack', 'Home_FIFA_Midfield', 'Home_FIFA_Defense', 'Home_FIFA_Physical', 'Away_Shots', 'Away_SOT', 'Away_Corners', 'Away_Possession', 'Away_FIFA_Overall', 'Away_FIFA_Attack', 'Away_FIFA_Midfield', 'Away_FIFA_Defense', 'Away_FIFA_Physical']
+    importances = model.feature_importances_
+    df_imp = pd.DataFrame({'Feature': feature_names, 'Importance': importances}).sort_values('Importance', ascending=False).head(10)
+    fig, ax = plt.subplots(figsize=(10, 6))
+    sns.barplot(x='Importance', y='Feature', data=df_imp, palette='viridis', ax=ax)
+    ax.set_title('🧠 Yapay Zeka Karar Mekanizması'); st.pyplot(fig)
+
+# ---------------------------------------------------------
+# 5. SAYFA YÖNETİMİ
 # ---------------------------------------------------------
 if 'page' not in st.session_state: st.session_state['page'] = 'dashboard'
 if 'view_team' not in st.session_state: st.session_state['view_team'] = None
@@ -247,12 +313,11 @@ def go_match(m):
     st.session_state['page'] = 'match_detail'
 
 # =========================================================
-# MAÇ DETAYI (DASHBOARD TARZI)
+# MAÇ DETAYI (SAHA DÜZELTİLDİ)
 # =========================================================
 if st.session_state['page'] == 'match_detail':
     m = st.session_state['view_match']
     back_target = 'team_detail' if st.session_state.get('last_page') == 'team_detail' else 'dashboard'
-    
     c_back, c_title = st.columns([1, 5])
     c_back.button("🔙 Geri", on_click=lambda: st.session_state.update({'page': back_target}))
     c_title.markdown(f"## 🏟️ {m['Ev']} vs {m['Dep']}")
@@ -285,15 +350,12 @@ if st.session_state['page'] == 'match_detail':
         st.subheader("⚽ Goller")
         h_sc = m.get('Ev_Goller', [])
         a_sc = m.get('Dep_Goller', [])
-        
         st.markdown(f"**{m['Ev']}**")
         if h_sc:
             for s in h_sc: st.caption(s)
         else:
             st.caption("-")
-            
         st.divider()
-        
         st.markdown(f"**{m['Dep']}**")
         if a_sc:
             for s in a_sc: st.caption(s)
@@ -301,7 +363,7 @@ if st.session_state['page'] == 'match_detail':
             st.caption("-")
         st.markdown('</div>', unsafe_allow_html=True)
 
-    # ORTA KOLON (SAHA)
+    # ORTA KOLON (SAHA VE İSİMLER)
     with col2:
         st.markdown(f"""<div style="text-align: center; background: #000; padding: 15px; border-radius: 10px; margin-bottom: 10px; border: 1px solid #444;"><h1 style="color: white; margin:0; font-size: 36px;"><span style="color:#4CAF50">{m['HG']}</span> <span style="color:#888; font-size: 20px;">vs</span> <span style="color:#FF5252">{m['AG']}</span></h1><p style="color:#aaa; margin:0;">Maç Sonucu</p></div>""", unsafe_allow_html=True)
         
@@ -454,10 +516,7 @@ elif mode == "Haftalık İlerleme" and st.session_state['page'] == 'dashboard':
                     elif res==0 and ag<=hg: ag=hg+1
                     elif res==1: hg=ag=int((hg+ag)/2)
                     
-                    stats = generate_live_stats(h, a, hg, ag)
-                    h_sc = simulate_scorers(h, hg)
-                    a_sc = simulate_scorers(a, ag)
-                    
+                    stats = generate_live_stats(h, a, hg, ag); h_sc = simulate_scorers(h, hg); a_sc = simulate_scorers(a, ag)
                     tbl = st.session_state['weekly_table']
                     tbl[h]['P']+=1; tbl[a]['P']+=1; tbl[h]['GF']+=hg; tbl[a]['GF']+=ag; tbl[h]['GA']+=ag; tbl[a]['GA']+=hg; tbl[h]['GD']+=(hg-ag); tbl[a]['GD']+=(ag-hg)
                     if res==2: tbl[h]['W']+=1; tbl[h]['Pts']+=3; tbl[a]['L']+=1
@@ -480,9 +539,11 @@ elif mode == "Haftalık İlerleme" and st.session_state['page'] == 'dashboard':
             t1, t2, t3, t4, t5 = st.tabs(["Gol Krallığı", "🏆 Şampiyonluk Yarışı", "🛡️ Hücum vs Defans", "📊 Galibiyet Karnesi", "🧠 Yapay Zeka"])
             hist_df = pd.DataFrame(st.session_state['weekly_history'])
             sim_df = pd.DataFrame.from_dict(st.session_state['weekly_table'], orient='index')
-            # Analiz grafikleri (plot_top_scorers vb.) import edilmediyse burada hata verir
-            # Bu yüzden bu kısım sadece placeholder
-            st.warning("Analiz fonksiyonları aktif edildiğinde grafikler burada görünecek.")
+            with t1: plot_top_scorers(hist_df)
+            with t2: plot_title_race(hist_df, all_teams)
+            with t3: plot_attack_vs_defense(sim_df)
+            with t4: plot_wdl_distribution(sim_df)
+            with t5: plot_feature_importance()
             st.divider()
 
         col_res, col_tab = st.columns([4, 5])
@@ -529,11 +590,7 @@ elif mode == "Tüm Sezonu Simüle Et" and st.session_state['page'] == 'dashboard
                 if res==2 and hg<=ag: hg=ag+1
                 elif res==0 and ag<=hg: ag=hg+1
                 elif res==1: hg=ag=int((hg+ag)/2)
-                
-                stats = generate_live_stats(h, a, hg, ag)
-                h_sc = simulate_scorers(h, hg)
-                a_sc = simulate_scorers(a, ag)
-                
+                stats = generate_live_stats(h, a, hg, ag); h_sc = simulate_scorers(h, hg); a_sc = simulate_scorers(a, ag)
                 hist.append({'Ev': h, 'Dep': a, 'HG': hg, 'AG': ag, 'Skor': f"{hg}-{ag}", 'Stats': stats, 'Ev_Goller': h_sc, 'Dep_Goller': a_sc})
                 tbl[h]['P']+=1; tbl[a]['P']+=1; tbl[h]['GF']+=hg; tbl[a]['GF']+=ag; tbl[h]['GA']+=ag; tbl[a]['GA']+=hg; tbl[h]['GD']+=(hg-ag); tbl[a]['GD']+=(ag-hg)
                 if res==2: tbl[h]['W']+=1; tbl[h]['Pts']+=3; tbl[a]['L']+=1
@@ -549,8 +606,13 @@ elif mode == "Tüm Sezonu Simüle Et" and st.session_state['page'] == 'dashboard
     if st.session_state.get('sim_done'):
         if st.button("📊 DETAYLI SEZON RAPORU", type="primary"):
             st.divider(); st.title("📈 Sezon Sonu Analizi")
-            # Analiz grafikleri (plot_top_scorers vb.) buraya eklenebilir
-            st.warning("Analiz fonksiyonları aktif edildiğinde grafikler burada görünecek.")
+            t1, t2, t3, t4, t5 = st.tabs(["Gol Krallığı", "🏆 Şampiyonluk Yarışı", "🛡️ Hücum vs Defans", "📊 Galibiyet Karnesi", "🧠 Yapay Zeka"])
+            sim_df = st.session_state['sim_table']; hist_df = st.session_state['sim_history']
+            with t1: plot_top_scorers(hist_df)
+            with t2: plot_title_race(hist_df, all_teams)
+            with t3: plot_attack_vs_defense(sim_df)
+            with t4: plot_wdl_distribution(sim_df)
+            with t5: plot_feature_importance()
             st.divider()
 
     if 'sim_table' in st.session_state:
