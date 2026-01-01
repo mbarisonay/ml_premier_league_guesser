@@ -11,7 +11,6 @@ player_data_file = 'ALL_FIFA_STATS_FINAL.csv'
 
 print("Veriler yükleniyor...")
 matches = pd.read_csv(match_data_file)
-# String temizliği
 df_obj = matches.select_dtypes(['object'])
 matches[df_obj.columns] = df_obj.apply(lambda x: x.str.strip())
 
@@ -64,14 +63,63 @@ if pos_col is None:
     print("⚠️ 'Position' sütunu bulunamadı. Tahmin ediliyor...")
     def infer_position(row):
         def g(k): return row.get(k, 0)
+        # Kaleci refleksi yüksekse GK
         if (g('GKDiving') + g('GKHandling'))/2 > 40: return 'GK'
-        if (g('Finishing') + g('Volleys'))/2 > (g('StandingTackle') + g('Interceptions'))/2: return 'FW'
-        return 'MF'
+        # Defansif özellikleri yüksekse DF
+        if (g('StandingTackle') + g('Interceptions')) > (g('Finishing') + g('Volleys')): return 'DF'
+        # Pas yüksekse MF
+        if (g('ShortPassing') + g('Vision')) > (g('Finishing') + g('StandingTackle')): return 'MF'
+        return 'FW'
     players['Position'] = players.apply(infer_position, axis=1)
     pos_col = 'Position'
 
 # ---------------------------------------------------------
-# 3. TAKIM GÜÇLERİ
+# 3. KADRO LİSTELERİ (DÜZELTİLDİ: OVERALL'A GÖRE SEÇİM)
+# ---------------------------------------------------------
+print("Kadro listeleri oluşturuluyor...")
+latest_year = players['SeasonYear'].max()
+latest_players = players[players['SeasonYear'] == latest_year].copy()
+all_match_teams = set(matches['HomeTeam'].unique()) | set(matches['AwayTeam'].unique())
+if "Brighton" not in all_match_teams: all_match_teams.add("Brighton")
+
+team_rosters = {}
+for team in all_match_teams:
+    team_p = latest_players[latest_players['Team'] == team]
+    if len(team_p) > 0:
+        # DÜZELTME BURADA: Artık Finishing değil, OVERALL puanına göre en iyi 15 kişiyi alıyoruz.
+        # Böylece Kaleci ve Defanslar da listeye giriyor.
+        roster = team_p.sort_values(by=['Overall'], ascending=False).head(16)
+        team_rosters[team] = roster[['Name', 'Finishing', 'Overall', pos_col]].rename(columns={pos_col: 'Position'}).to_dict('records')
+    else:
+        team_rosters[team] = []
+
+# --- MANUEL KADRO YAMASI (Tam Kadrolar) ---
+# Eksik takımlar için gerçekçi 11'ler
+manual_squads = {
+    "Luton Town": [
+        {"Name": "Kaminski", "Finishing": 10, "Overall": 75, "Position": "GK"},
+        {"Name": "Mengi", "Finishing": 30, "Overall": 73, "Position": "DF"},
+        {"Name": "Bell", "Finishing": 40, "Overall": 72, "Position": "DF"},
+        {"Name": "Burke", "Finishing": 35, "Overall": 71, "Position": "DF"},
+        {"Name": "Doughty", "Finishing": 60, "Overall": 74, "Position": "MF"},
+        {"Name": "Barkley", "Finishing": 74, "Overall": 78, "Position": "MF"},
+        {"Name": "Lokonga", "Finishing": 65, "Overall": 75, "Position": "MF"},
+        {"Name": "Townsend", "Finishing": 71, "Overall": 74, "Position": "MF"},
+        {"Name": "Chong", "Finishing": 70, "Overall": 73, "Position": "MF"},
+        {"Name": "Morris", "Finishing": 78, "Overall": 76, "Position": "FW"},
+        {"Name": "Adebayo", "Finishing": 76, "Overall": 75, "Position": "FW"}
+    ],
+    # Diğer takımları FIFA verisinden çekecek, buraya sadece FIFA'da olmayanları ekle
+}
+
+for team_name, squad in manual_squads.items():
+    if team_name in team_rosters and len(team_rosters[team_name]) < 5:
+        team_rosters[team_name] = squad
+    elif team_name not in team_rosters:
+        team_rosters[team_name] = squad
+
+# ---------------------------------------------------------
+# 4. TAKIM GÜÇLERİ VE EĞİTİM
 # ---------------------------------------------------------
 print("Takım güçleri hesaplanıyor...")
 def calculate_team_power(group):
@@ -86,120 +134,6 @@ def calculate_team_power(group):
 
 team_fifa_stats = players.groupby(['Team', 'SeasonYear']).apply(calculate_team_power, include_groups=False).reset_index()
 
-# ---------------------------------------------------------
-# 4. KADRO LİSTELERİ VE GENİŞLETİLMİŞ MANUEL YAMA
-# ---------------------------------------------------------
-print("Kadro listeleri oluşturuluyor...")
-latest_year = players['SeasonYear'].max()
-latest_players = players[players['SeasonYear'] == latest_year].copy()
-all_match_teams = set(matches['HomeTeam'].unique()) | set(matches['AwayTeam'].unique())
-
-# Eksik olma ihtimali yüksek takımları manuel listeye ekleyelim
-if "Brighton" not in all_match_teams: all_match_teams.add("Brighton")
-
-team_rosters = {}
-for team in all_match_teams:
-    team_p = latest_players[latest_players['Team'] == team]
-    if len(team_p) > 0:
-        roster = team_p.sort_values(by=['Finishing', 'Overall'], ascending=False).head(15)
-        team_rosters[team] = roster[['Name', 'Finishing', pos_col]].rename(columns={pos_col: 'Position'}).to_dict('records')
-    else:
-        team_rosters[team] = [] 
-
-# --- MANUEL KADRO YAMASI (GENİŞLETİLMİŞ LİSTE) ---
-# Buradaki amaç gollerin tek bir oyuncuya yığılmasını engellemek için her takıma en az 4-5 golcü yazmaktır.
-
-manual_squads = {
-    "Luton Town": [
-        {"Name": "Carlton Morris", "Finishing": 78, "Position": "FW"},
-        {"Name": "Elijah Adebayo", "Finishing": 76, "Position": "FW"},
-        {"Name": "Ross Barkley", "Finishing": 74, "Position": "MF"},
-        {"Name": "Tahith Chong", "Finishing": 70, "Position": "MF"},
-        {"Name": "Chiedozie Ogbene", "Finishing": 69, "Position": "FW"},
-        {"Name": "Andros Townsend", "Finishing": 71, "Position": "MF"}
-    ],
-    "Sheffield United": [
-        {"Name": "Cameron Archer", "Finishing": 75, "Position": "FW"},
-        {"Name": "Oli McBurnie", "Finishing": 74, "Position": "FW"},
-        {"Name": "Gustavo Hamer", "Finishing": 73, "Position": "MF"},
-        {"Name": "Ben Brereton Díaz", "Finishing": 76, "Position": "FW"},
-        {"Name": "James McAtee", "Finishing": 71, "Position": "MF"}
-    ],
-    "Burnley": [
-        {"Name": "Lyle Foster", "Finishing": 75, "Position": "FW"},
-        {"Name": "Zeki Amdouni", "Finishing": 74, "Position": "FW"},
-        {"Name": "David Datro Fofana", "Finishing": 73, "Position": "FW"},
-        {"Name": "Josh Brownhill", "Finishing": 71, "Position": "MF"},
-        {"Name": "Wilson Odobert", "Finishing": 70, "Position": "FW"}
-    ],
-    "Brighton": [
-        {"Name": "Joao Pedro", "Finishing": 79, "Position": "FW"},
-        {"Name": "Evan Ferguson", "Finishing": 78, "Position": "FW"},
-        {"Name": "Kaoru Mitoma", "Finishing": 76, "Position": "FW"},
-        {"Name": "Pascal Gross", "Finishing": 75, "Position": "MF"},
-        {"Name": "Simon Adingra", "Finishing": 74, "Position": "FW"},
-        {"Name": "Danny Welbeck", "Finishing": 75, "Position": "FW"}
-    ],
-    "Fulham": [ # ARTIK 'FULHAM FORVET' OLMAYACAK
-        {"Name": "Rodrigo Muniz", "Finishing": 78, "Position": "FW"},
-        {"Name": "Raúl Jiménez", "Finishing": 77, "Position": "FW"},
-        {"Name": "Alex Iwobi", "Finishing": 73, "Position": "MF"},
-        {"Name": "Andreas Pereira", "Finishing": 74, "Position": "MF"},
-        {"Name": "Harry Wilson", "Finishing": 75, "Position": "FW"},
-        {"Name": "Willian", "Finishing": 74, "Position": "FW"}
-    ],
-    "Bournemouth": [
-        {"Name": "Dominic Solanke", "Finishing": 80, "Position": "FW"},
-        {"Name": "Antoine Semenyo", "Finishing": 75, "Position": "FW"},
-        {"Name": "Justin Kluivert", "Finishing": 74, "Position": "FW"},
-        {"Name": "Marcus Tavernier", "Finishing": 72, "Position": "MF"},
-        {"Name": "Enes Ünal", "Finishing": 76, "Position": "FW"}
-    ],
-    "Brentford": [
-        {"Name": "Ivan Toney", "Finishing": 81, "Position": "FW"},
-        {"Name": "Bryan Mbeumo", "Finishing": 77, "Position": "FW"},
-        {"Name": "Yoane Wissa", "Finishing": 76, "Position": "FW"},
-        {"Name": "Neal Maupay", "Finishing": 75, "Position": "FW"},
-        {"Name": "Mathias Jensen", "Finishing": 70, "Position": "MF"}
-    ],
-    "Nottingham Forest": [
-        {"Name": "Chris Wood", "Finishing": 78, "Position": "FW"},
-        {"Name": "Taiwo Awoniyi", "Finishing": 77, "Position": "FW"},
-        {"Name": "Morgan Gibbs-White", "Finishing": 74, "Position": "MF"},
-        {"Name": "Anthony Elanga", "Finishing": 73, "Position": "FW"},
-        {"Name": "Callum Hudson-Odoi", "Finishing": 72, "Position": "FW"}
-    ],
-    "Crystal Palace": [ # Eksik olma ihtimaline karşı
-        {"Name": "Jean-Philippe Mateta", "Finishing": 78, "Position": "FW"},
-        {"Name": "Eberechi Eze", "Finishing": 77, "Position": "MF"},
-        {"Name": "Michael Olise", "Finishing": 76, "Position": "FW"},
-        {"Name": "Odsonne Édouard", "Finishing": 75, "Position": "FW"},
-        {"Name": "Jordan Ayew", "Finishing": 72, "Position": "FW"}
-    ]
-}
-
-# Eksik takımları manuel listeyle doldur
-for team_name, squad in manual_squads.items():
-    # Eğer takımın kadrosu boşsa veya çok azsa (hata varsa) manuel listeyi kullan
-    if team_name in team_rosters and len(team_rosters[team_name]) < 3:
-        print(f"🛠️  {team_name} için manuel kadro yüklendi.")
-        team_rosters[team_name] = squad
-    # Eğer takım listede hiç yoksa ekle
-    elif team_name not in team_rosters:
-        team_rosters[team_name] = squad
-
-# Hala boş kalan varsa son çare generic isimler
-for team in all_match_teams:
-    if not team_rosters.get(team):
-        print(f"⚠️ {team} için hala kadro yok, generic isimler atanıyor.")
-        team_rosters[team] = [
-            {'Name': f'{team} Forvet', 'Finishing': 75, 'Position': 'FW'},
-            {'Name': f'{team} Kaptan', 'Finishing': 70, 'Position': 'MF'}
-        ]
-
-# ---------------------------------------------------------
-# 5. VERİ BİRLEŞTİRME VE EĞİTİM
-# ---------------------------------------------------------
 print("Veriler birleştiriliyor...")
 matches['SeasonYear'] = matches['Date'].apply(lambda x: x.year if x.month >= 8 else x.year - 1)
 
@@ -213,7 +147,6 @@ df_merged = pd.merge(df_merged, team_fifa_stats, left_on=['AwayTeam', 'SeasonYea
 df_merged.rename(columns={c: f'Away_{c}' for c in cols}, inplace=True)
 df_merged.drop(columns=['Team'], inplace=True)
 
-# NaN Doldur
 for c in cols:
     mean_val = df_merged[f'Home_{c}'].mean()
     df_merged[f'Home_{c}'] = df_merged[f'Home_{c}'].fillna(mean_val)
@@ -225,7 +158,7 @@ def get_result(row):
     else: return 0
 df_merged['MatchResult'] = df_merged.apply(get_result, axis=1)
 
-# Profil Oluşturma
+# Eğitim
 split_date = pd.to_datetime("2023-08-01")
 train_df = df_merged[df_merged['Date'] < split_date].copy()
 real_23_24_df = df_merged[df_merged['Date'] >= split_date].copy()
@@ -233,22 +166,17 @@ real_23_24_df = df_merged[df_merged['Date'] >= split_date].copy()
 stat_cols = ['Shots', 'SOT', 'Corners', 'Possession']
 h_ren = {f'Home{c}': c for c in stat_cols}; h_ren['HomeTeam'] = 'Team'
 a_ren = {f'Away{c}': c for c in stat_cols}; a_ren['AwayTeam'] = 'Team'
-
 h_stats = train_df[['HomeTeam'] + ['Home' + c for c in stat_cols]].rename(columns=h_ren)
 a_stats = train_df[['AwayTeam'] + ['Away' + c for c in stat_cols]].rename(columns=a_ren)
 performance_profiles = pd.concat([h_stats, a_stats]).groupby('Team').mean()
 
-latest_fifa = team_fifa_stats[team_fifa_stats['SeasonYear'] == team_fifa_stats['SeasonYear'].max()]
-latest_fifa = latest_fifa.drop_duplicates('Team').set_index('Team')[cols]
+latest_fifa = team_fifa_stats[team_fifa_stats['SeasonYear'] == team_fifa_stats['SeasonYear'].max()].drop_duplicates('Team').set_index('Team')[cols]
 
-# Eksik Profilleri Tamamla
+# Eksik Profiller
 for t in all_match_teams:
-    if t not in performance_profiles.index:
-        performance_profiles.loc[t] = performance_profiles.mean()
-    if t not in latest_fifa.index:
-        latest_fifa.loc[t] = latest_fifa.mean()
+    if t not in performance_profiles.index: performance_profiles.loc[t] = performance_profiles.mean()
+    if t not in latest_fifa.index: latest_fifa.loc[t] = latest_fifa.mean()
 
-# Model Eğitimi
 X, y = [], []
 print("Model eğitiliyor...")
 for idx, row in train_df.iterrows():
@@ -263,18 +191,16 @@ for idx, row in train_df.iterrows():
 
 X = np.array(X)
 y = np.array(y)
-
 model = RandomForestClassifier(n_estimators=200, max_depth=12, random_state=42)
 model.fit(X, y)
 
-# Kayıt
 export_data = {
     'model': model,
     'performance_profiles': performance_profiles,
     'fifa_profiles': latest_fifa,
-    'team_rosters': team_rosters, 
+    'team_rosters': team_rosters,
     'real_23_24_data': real_23_24_df
 }
 
 joblib.dump(export_data, 'super_model.pkl')
-print(f"✅ BAŞARILI! Fulham ve diğer takımların kadroları eklendi. 'super_model.pkl' güncellendi.")
+print(f"✅ BAŞARILI! 'super_model.pkl' doğru kadrolarla yenilendi.")

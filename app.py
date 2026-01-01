@@ -7,16 +7,12 @@ import random
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-# ---------------------------------------------------------
-# 1. SAYFA AYARLARI VE STİL
-# ---------------------------------------------------------
 st.set_page_config(page_title="PL AI Super Hub", layout="wide", page_icon="⚽")
-
-# Grafik Ayarları
 plt.style.use('dark_background')
 
 st.markdown("""
 <style>
+    /* Genel Stiller */
     .stat-container { margin-bottom: 8px; }
     .stat-header { display: flex; justify-content: space-between; font-size: 13px; font-weight: bold; margin-bottom: 2px; }
     .stat-bar-bg { display: flex; height: 8px; background-color: #333; border-radius: 4px; overflow: hidden; }
@@ -26,10 +22,9 @@ st.markdown("""
     .score-text { font-size: 20px; font-weight: bold; color: white; padding: 0 15px; }
     .team-name { font-size: 16px; font-weight: 500; }
     .scorer-item { font-size: 12px; color: #ccc; margin-bottom: 2px; }
-    
-    /* DASHBOARD STİLLERİ */
     .dashboard-card { background-color: #1e1e1e; border: 1px solid #333; border-radius: 10px; padding: 15px; margin-bottom: 15px; }
     
+    /* SAHA TASARIMI */
     .pitch-container { 
         background: linear-gradient(to bottom, #2e7d32, #1b5e20); 
         border: 2px solid #fff; 
@@ -53,56 +48,36 @@ st.markdown("""
         transform: translate(-50%, -50%); 
     }
     
-    /* OYUNCU KUTUSU */
+    /* OYUNCU GÖRÜNÜMÜ */
     .player-wrapper {
         display: flex;
         flex-direction: column;
         align-items: center;
-        width: 65px; 
+        width: 70px;
         z-index: 2;
     }
-    
     .player-dot { 
         background-color: white; 
         color: #111; 
         border-radius: 50%; 
-        width: 28px; height: 28px; 
-        display: flex; 
-        align-items: center; 
-        justify-content: center; 
-        font-size: 11px; 
-        font-weight: 900; 
-        box-shadow: 0 3px 6px rgba(0,0,0,0.6);
-        border: 2px solid #ccc;
-        margin-bottom: 2px;
+        width: 32px; height: 32px; 
+        display: flex; align-items: center; justify-content: center; 
+        font-size: 11px; font-weight: 900; 
+        box-shadow: 0 3px 6px rgba(0,0,0,0.6); 
+        border: 2px solid #ccc; 
+        margin-bottom: 3px;
     }
-    
     .player-name {
-        font-size: 10px;
-        color: white;
-        text-shadow: 1px 1px 2px black;
-        background-color: rgba(0,0,0,0.5);
-        padding: 2px 4px;
-        border-radius: 4px;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        max-width: 100%;
-        line-height: 1.1;
+        font-size: 11px; color: white; text-shadow: 1px 1px 2px black;
+        background-color: rgba(0,0,0,0.6); padding: 2px 5px; border-radius: 4px;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%;
     }
-
-    .player-row { 
-        display: flex; 
-        justify-content: center; 
-        gap: 5px; /* Oyuncular arası boşluk */
-        margin: 2px 0; 
-    }
+    .player-row { display: flex; justify-content: center; gap: 8px; margin: 2px 0; }
     .small-table-header { font-size: 12px; color: #aaa; }
     .small-table-row { font-size: 13px; border-bottom: 1px solid #333; padding: 3px 0; }
 </style>
 """, unsafe_allow_html=True)
 
-# Güvenli Renklendirme
 def safe_style(s, df):
     try:
         rank = df.index.get_loc(s.name)
@@ -112,33 +87,23 @@ def safe_style(s, df):
         else: return [''] * len(s)
     except: return [''] * len(s)
 
-# ---------------------------------------------------------
-# 2. VERİ YÜKLEME
-# ---------------------------------------------------------
 @st.cache_resource
 def load_data():
     try:
         data = joblib.load('super_model.pkl')
         return (data['model'], data['performance_profiles'], data['fifa_profiles'], 
                 data.get('team_rosters', {}), data['real_23_24_data'])
-    except FileNotFoundError:
-        return None, None, None, None, None
+    except FileNotFoundError: return None, None, None, None, None
 
 model, perf_profiles, fifa_profiles, team_rosters, real_df = load_data()
 
-if model is None:
-    st.error("❌ 'super_model.pkl' bulunamadı! Lütfen 'model_advanced_training.py' kodunu çalıştır.")
-    st.stop()
-
+if model is None: st.error("❌ 'super_model.pkl' bulunamadı!"); st.stop()
 all_teams = sorted(pd.concat([real_df['HomeTeam'], real_df['AwayTeam']]).unique())
 
-# ---------------------------------------------------------
-# 3. YARDIMCI MOTORLAR
-# ---------------------------------------------------------
+# --- YARDIMCI MOTORLAR ---
 def get_team_vector(team_name):
     if team_name in perf_profiles.index: perf = perf_profiles.loc[team_name].values
     else: perf = perf_profiles.mean().values 
-    
     needed = ['FIFA_Overall', 'FIFA_Attack', 'FIFA_Midfield', 'FIFA_Defense', 'FIFA_Physical']
     if team_name in fifa_profiles.index: fifa = fifa_profiles.loc[team_name][needed].values
     else: fifa = fifa_profiles[needed].mean().values
@@ -153,21 +118,17 @@ def simulate_scorers(team, goals):
     else:
         names = [p['Name'] for p in roster]
         finishing = np.array([p['Finishing'] for p in roster], dtype=float)
-        weights = np.exp(finishing / 12)
-        weights /= weights.sum()
-    
+        weights = np.exp(finishing / 12); weights /= weights.sum()
     for _ in range(goals):
         scorer = np.random.choice(names, p=weights)
         minute = np.random.randint(1, 98)
         scorers.append(f"⚽ {scorer} ({minute}')")
-    
     scorers.sort(key=lambda x: int(x.split('(')[1].split("'")[0]))
     return scorers
 
 def generate_live_stats(home, away, hg, ag):
     base_poss = 50
-    if hg > ag: base_poss = 45
-    elif ag > hg: base_poss = 55
+    if hg > ag: base_poss = 45; elif ag > hg: base_poss = 55
     h_poss = np.random.randint(base_poss-5, base_poss+10); a_poss = 100 - h_poss
     h_shots = max(hg + np.random.randint(2, 8), int(hg * 2.5) + 5)
     a_shots = max(ag + np.random.randint(2, 8), int(ag * 2.5) + 5)
@@ -176,25 +137,13 @@ def generate_live_stats(home, away, hg, ag):
     h_xg = round(h_sot * 0.12 + (h_shots - h_sot) * 0.03 + (hg * 0.4), 2)
     a_xg = round(a_sot * 0.12 + (a_shots - a_sot) * 0.03 + (ag * 0.4), 2)
     h_pass = h_poss*4 + np.random.randint(50,100); a_pass = a_poss*4 + np.random.randint(50,100)
-    return {
-        'Topla Oynama (%)': (h_poss, a_poss), 'Gol Beklentisi (xG)': (h_xg, a_xg),
-        'Toplam Şut': (h_shots, a_shots), 'İsabetli Şut': (h_sot, a_sot),
-        'Pas Sayısı': (h_pass, a_pass), 'Korner': (np.random.randint(2, 12), np.random.randint(2, 12)),
-        'Faul': (np.random.randint(4, 15), np.random.randint(4, 15))
-    }
+    return {'Topla Oynama (%)': (h_poss, a_poss), 'Gol Beklentisi (xG)': (h_xg, a_xg), 'Toplam Şut': (h_shots, a_shots), 'İsabetli Şut': (h_sot, a_sot), 'Pas Sayısı': (h_pass, a_pass), 'Korner': (np.random.randint(2, 12), np.random.randint(2, 12)), 'Faul': (np.random.randint(4, 15), np.random.randint(4, 15))}
 
 def draw_stat_bar(stat_name, h_val, a_val):
     total = h_val + a_val
     if total == 0: h_pct, a_pct = 50, 50
     else: h_pct = (h_val / total) * 100; a_pct = (a_val / total) * 100
-    st.markdown(f"""
-    <div class="stat-container">
-        <div class="stat-header">
-            <span style="color: #4CAF50;">{h_val}</span><span style="color: #bbb;">{stat_name}</span><span style="color: #FF5252;">{a_val}</span>
-        </div>
-        <div class="stat-bar-bg"><div class="bar-home" style="width: {h_pct}%;"></div><div class="bar-away" style="width: {a_pct}%;"></div></div>
-    </div>
-    """, unsafe_allow_html=True)
+    st.markdown(f"""<div class="stat-container"><div class="stat-header"><span style="color: #4CAF50;">{h_val}</span><span style="color: #bbb;">{stat_name}</span><span style="color: #FF5252;">{a_val}</span></div><div class="stat-bar-bg"><div class="bar-home" style="width: {h_pct}%;"></div><div class="bar-away" style="width: {a_pct}%;"></div></div></div>""", unsafe_allow_html=True)
 
 # ---------------------------------------------------------
 # 4. SAYFA YÖNETİMİ
@@ -211,12 +160,11 @@ def go_team(t): st.session_state['view_team'] = t; st.session_state['page'] = 't
 def go_match(m): st.session_state['view_match'] = m; st.session_state['page'] = 'match_detail'
 
 # =========================================================
-# MAÇ DETAYI (DÜZELTİLMİŞ HTML)
+# MAÇ DETAYI (SAHA DÜZELTİLDİ)
 # =========================================================
 if st.session_state['page'] == 'match_detail':
     m = st.session_state['view_match']
     back_target = 'team_detail' if st.session_state.get('last_page') == 'team_detail' else 'dashboard'
-    
     c_back, c_title = st.columns([1, 5])
     c_back.button("🔙 Geri", on_click=lambda: st.session_state.update({'page': back_target}))
     c_title.markdown(f"## 🏟️ {m['Ev']} vs {m['Dep']}")
@@ -247,42 +195,44 @@ if st.session_state['page'] == 'match_detail':
 
         st.markdown('<div class="dashboard-card">', unsafe_allow_html=True)
         st.subheader("⚽ Goller")
-        h_sc = m.get('Ev_Goller', [])
-        a_sc = m.get('Dep_Goller', [])
-        st.markdown(f"**{m['Ev']}**")
-        if h_sc: [st.caption(s) for s in h_sc]
-        else: st.caption("-")
+        h_sc = m.get('Ev_Goller', []); a_sc = m.get('Dep_Goller', [])
+        st.markdown(f"**{m['Ev']}**"); [st.caption(s) for s in h_sc] if h_sc else st.caption("-")
         st.divider()
-        st.markdown(f"**{m['Dep']}**")
-        if a_sc: [st.caption(s) for s in a_sc]
-        else: st.caption("-")
+        st.markdown(f"**{m['Dep']}**"); [st.caption(s) for s in a_sc] if a_sc else st.caption("-")
         st.markdown('</div>', unsafe_allow_html=True)
 
-    # ORTA KOLON (SAHA HTML DÜZELTİLDİ)
+    # ORTA KOLON (SAHA VE İSİMLER)
     with col2:
         st.markdown(f"""<div style="text-align: center; background: #000; padding: 15px; border-radius: 10px; margin-bottom: 10px; border: 1px solid #444;"><h1 style="color: white; margin:0; font-size: 36px;"><span style="color:#4CAF50">{m['HG']}</span> <span style="color:#888; font-size: 20px;">vs</span> <span style="color:#FF5252">{m['AG']}</span></h1><p style="color:#aaa; margin:0;">Maç Sonucu</p></div>""", unsafe_allow_html=True)
         
+        # Kadro Mantığı (Artık Kaleciler ve Defanslar da Gelecek)
         def get_formation(team_name):
             roster = team_rosters.get(team_name, [])
-            def extract_info(full_name):
+            
+            def get_info(full_name):
                 parts = full_name.split()
                 surname = parts[-1] if len(parts) > 0 else "?"
                 initial = surname[0]
                 return (initial, surname)
 
-            fw = [extract_info(p['Name']) for p in roster if p['Position'] == 'FW'][:2]
-            mf = [extract_info(p['Name']) for p in roster if p['Position'] == 'MF'][:4]
-            df = [extract_info(p['Name']) for p in roster if p['Position'] in ['DF', 'CB', 'LB', 'RB']][:4]
-            gk = [extract_info(p['Name']) for p in roster if p['Position'] == 'GK'][:1]
+            # Mevkileri ayıkla
+            gks = [get_info(p['Name']) for p in roster if p['Position'] == 'GK']
+            dfs = [get_info(p['Name']) for p in roster if p['Position'] in ['DF', 'CB', 'LB', 'RB', 'LWB', 'RWB']]
+            mfs = [get_info(p['Name']) for p in roster if p['Position'] in ['MF', 'CM', 'CDM', 'CAM', 'LM', 'RM']]
+            fws = [get_info(p['Name']) for p in roster if p['Position'] in ['FW', 'ST', 'CF', 'RW', 'LW']]
+
+            # İlk 11 için en iyileri seç (Zaten liste Overall'a göre sıralı)
+            final_gk = gks[:1] if gks else [("G", "Kaleci")]
+            final_df = dfs[:4] if len(dfs)>=4 else (dfs + [("D", "Defans")]*(4-len(dfs)))
+            final_mf = mfs[:4] if len(mfs)>=4 else (mfs + [("M", "Ortasaha")]*(4-len(mfs)))
+            final_fw = fws[:2] if len(fws)>=2 else (fws + [("F", "Forvet")]*(2-len(fws)))
             
-            if not gk: gk = [("G", "Kaleci")]
-            if not fw: fw = [("F", "Forvet 1"), ("F", "Forvet 2")]
-            return gk, df, mf, fw
+            return final_gk, final_df, final_mf, final_fw
 
         ev_gk, ev_df, ev_mf, ev_fw = get_formation(m['Ev'])
         dep_gk, dep_df, dep_mf, dep_fw = get_formation(m['Dep'])
 
-        # HTML OLUŞTURUCU (BOŞLUKSUZ YAPI)
+        # HTML OLUŞTURUCU
         def create_row_html(players):
             html = '<div class="player-row">'
             for p in players:
@@ -291,27 +241,27 @@ if st.session_state['page'] == 'match_detail':
             html += '</div>'
             return html
 
-        # SAHA HTML (Düz Metin Olarak Birleştirildi)
-        pitch_html = f"""
-<div class="pitch-container">
-<div class="pitch-line"></div>
-<div class="pitch-circle"></div>
-<div style="color: #FF5252; font-weight:bold; margin-bottom:5px;">{m['Dep']}</div>
-{create_row_html(dep_gk)}
-{create_row_html(dep_df)}
-{create_row_html(dep_mf)}
-{create_row_html(dep_fw)}
-<div style="height: 30px;"></div>
-{create_row_html(ev_fw)}
-{create_row_html(ev_mf)}
-{create_row_html(ev_df)}
-{create_row_html(ev_gk)}
-<div style="color: #4CAF50; font-weight:bold; margin-top:5px;">{m['Ev']}</div>
-</div>
-"""
-        st.markdown(pitch_html, unsafe_allow_html=True)
+        st.markdown(f"""
+        <div class="pitch-container">
+            <div class="pitch-line"></div>
+            <div class="pitch-circle"></div>
+            <!-- DEPLASMAN -->
+            <div style="color: #FF5252; font-weight:bold; margin-bottom:5px;">{m['Dep']}</div>
+            {create_row_html(dep_gk)}
+            {create_row_html(dep_df)}
+            {create_row_html(dep_mf)}
+            {create_row_html(dep_fw)}
+            <div style="height: 30px;"></div>
+            <!-- EV SAHİBİ -->
+            {create_row_html(ev_fw)}
+            {create_row_html(ev_mf)}
+            {create_row_html(ev_df)}
+            {create_row_html(ev_gk)}
+            <div style="color: #4CAF50; font-weight:bold; margin-top:5px;">{m['Ev']}</div>
+        </div>
+        """, unsafe_allow_html=True)
 
-        with st.expander("Yedekler ve Tam Liste"):
+        with st.expander("Tam Kadroları Göster"):
             kc1, kc2 = st.columns(2)
             def format_list(lst): return ", ".join([x[1] for x in lst])
             with kc1:
@@ -433,8 +383,11 @@ elif mode == "Haftalık İlerleme" and st.session_state['page'] == 'dashboard':
             t1, t2, t3, t4, t5 = st.tabs(["Gol Krallığı", "🏆 Şampiyonluk Yarışı", "🛡️ Hücum vs Defans", "📊 Galibiyet Karnesi", "🧠 Yapay Zeka"])
             hist_df = pd.DataFrame(st.session_state['weekly_history'])
             sim_df = pd.DataFrame.from_dict(st.session_state['weekly_table'], orient='index')
-            # Analiz fonksiyonları buraya eklenebilir (Yer kazanmak için kısa tutuldu)
-            # ...
+            with t1: plot_top_scorers(hist_df)
+            with t2: plot_title_race(hist_df, all_teams)
+            with t3: plot_attack_vs_defense(sim_df)
+            with t4: plot_wdl_distribution(sim_df)
+            with t5: plot_feature_importance()
             st.divider()
 
         col_res, col_tab = st.columns([4, 5])
@@ -497,7 +450,13 @@ elif mode == "Tüm Sezonu Simüle Et" and st.session_state['page'] == 'dashboard
     if st.session_state.get('sim_done'):
         if st.button("📊 DETAYLI SEZON RAPORU", type="primary"):
             st.divider(); st.title("📈 Sezon Sonu Analizi")
-            # Analiz kodları buraya da gelebilir
+            t1, t2, t3, t4, t5 = st.tabs(["Gol Krallığı", "🏆 Şampiyonluk Yarışı", "🛡️ Hücum vs Defans", "📊 Galibiyet Karnesi", "🧠 Yapay Zeka"])
+            sim_df = st.session_state['sim_table']; hist_df = st.session_state['sim_history']
+            with t1: plot_top_scorers(hist_df)
+            with t2: plot_title_race(hist_df, all_teams)
+            with t3: plot_attack_vs_defense(sim_df)
+            with t4: plot_wdl_distribution(sim_df)
+            with t5: plot_feature_importance()
             st.divider()
 
     if 'sim_table' in st.session_state:
