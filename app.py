@@ -173,10 +173,8 @@ def simulate_scorers(team, goals):
 
 def generate_live_stats(home, away, hg, ag):
     base_poss = 50
-    if hg > ag:
-        base_poss = 45
-    elif ag > hg:
-        base_poss = 55
+    if hg > ag: base_poss = 45
+    elif ag > hg: base_poss = 55
     
     h_poss = np.random.randint(base_poss-5, base_poss+10)
     a_poss = 100 - h_poss
@@ -227,7 +225,7 @@ def draw_stat_bar(stat_name, h_val, a_val):
     """, unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# 4. GELİŞMİŞ ANALİZ GRAFİK FONKSİYONLARI (YENİ EKLENDİ)
+# 4. GELİŞMİŞ ANALİZ GRAFİK FONKSİYONLARI (EKSİK OLAN EKLENDİ)
 # ---------------------------------------------------------
 def plot_title_race(history_df, all_teams):
     if history_df.empty: return
@@ -265,6 +263,20 @@ def plot_attack_vs_defense(table_df):
     ax.set_title("🛡️ Hücum vs. Defans (GF vs GA)")
     ax.set_xlabel("Atılan Gol"); ax.set_ylabel("Yenilen Gol (Ters)"); ax.invert_yaxis()
     st.pyplot(fig)
+
+# --- İŞTE BU FONKSİYON EKSİKTİ, EKLENDİ ---
+def plot_wdl_distribution(table_df):
+    # W-D-L verilerini al
+    wdl_df = table_df[['W', 'D', 'L']].sort_values(by='W', ascending=True)
+    
+    fig, ax = plt.subplots(figsize=(10, 8))
+    wdl_df.plot(kind='barh', stacked=True, color=['#4CAF50', '#FFC107', '#FF5252'], ax=ax)
+    
+    ax.set_title("📊 Takım Karneleri (G / B / M)")
+    ax.set_xlabel("Maç Sayısı")
+    ax.legend(["Galibiyet", "Beraberlik", "Mağlubiyet"])
+    st.pyplot(fig)
+# ----------------------------------------------
 
 def plot_top_scorers(history_df):
     all_goals = []
@@ -313,11 +325,12 @@ def go_match(m):
     st.session_state['page'] = 'match_detail'
 
 # =========================================================
-# MAÇ DETAYI (SAHA DÜZELTİLDİ)
+# MAÇ DETAYI (SAHA DÜZELTİLDİ + İSİM ATAMA GARANTİSİ)
 # =========================================================
 if st.session_state['page'] == 'match_detail':
     m = st.session_state['view_match']
     back_target = 'team_detail' if st.session_state.get('last_page') == 'team_detail' else 'dashboard'
+    
     c_back, c_title = st.columns([1, 5])
     c_back.button("🔙 Geri", on_click=lambda: st.session_state.update({'page': back_target}))
     c_title.markdown(f"## 🏟️ {m['Ev']} vs {m['Dep']}")
@@ -350,12 +363,15 @@ if st.session_state['page'] == 'match_detail':
         st.subheader("⚽ Goller")
         h_sc = m.get('Ev_Goller', [])
         a_sc = m.get('Dep_Goller', [])
+        
         st.markdown(f"**{m['Ev']}**")
         if h_sc:
             for s in h_sc: st.caption(s)
         else:
             st.caption("-")
+            
         st.divider()
+        
         st.markdown(f"**{m['Dep']}**")
         if a_sc:
             for s in a_sc: st.caption(s)
@@ -363,26 +379,54 @@ if st.session_state['page'] == 'match_detail':
             st.caption("-")
         st.markdown('</div>', unsafe_allow_html=True)
 
-    # ORTA KOLON (SAHA VE İSİMLER)
+    # ORTA KOLON (SAHA) - YENİLENMİŞ KADRO MANTIĞI
     with col2:
         st.markdown(f"""<div style="text-align: center; background: #000; padding: 15px; border-radius: 10px; margin-bottom: 10px; border: 1px solid #444;"><h1 style="color: white; margin:0; font-size: 36px;"><span style="color:#4CAF50">{m['HG']}</span> <span style="color:#888; font-size: 20px;">vs</span> <span style="color:#FF5252">{m['AG']}</span></h1><p style="color:#aaa; margin:0;">Maç Sonucu</p></div>""", unsafe_allow_html=True)
         
         def get_formation(team_name):
             roster = team_rosters.get(team_name, [])
+            
+            # Tüm oyuncuları al
+            all_players = []
+            if roster:
+                all_players = [p['Name'] for p in roster]
+            
+            # Yetersizse tamamla (HATA ÖNLEYİCİ)
+            while len(all_players) < 11:
+                all_players.append("Yedek")
+
             def extract_info(full_name):
                 parts = full_name.split()
                 surname = parts[-1] if len(parts) > 0 else "?"
                 initial = surname[0]
                 return (initial, surname)
 
-            fw = [extract_info(p['Name']) for p in roster if p['Position'] == 'FW'][:2]
-            mf = [extract_info(p['Name']) for p in roster if p['Position'] == 'MF'][:4]
-            df = [extract_info(p['Name']) for p in roster if p['Position'] in ['DF', 'CB', 'LB', 'RB']][:4]
-            gk = [extract_info(p['Name']) for p in roster if p['Position'] == 'GK'][:1]
+            # Mevkilere ayır (Eğer mevki varsa)
+            gks = [extract_info(p['Name']) for p in roster if p.get('Position') == 'GK']
+            dfs = [extract_info(p['Name']) for p in roster if p.get('Position') in ['DF', 'CB', 'LB', 'RB']]
+            mfs = [extract_info(p['Name']) for p in roster if p.get('Position') in ['MF', 'CM', 'CDM', 'CAM', 'LM', 'RM']]
+            fws = [extract_info(p['Name']) for p in roster if p.get('Position') in ['FW', 'ST', 'CF', 'RW', 'LW']]
             
-            if not gk: gk = [("G", "Kaleci")]
-            if not fw: fw = [("F", "Forvet 1"), ("F", "Forvet 2")]
-            return gk, df, mf, fw
+            # Geriye kalanları havuza at (Pozisyonu olmayanlar)
+            used_names = set([x[1] for x in gks + dfs + mfs + fws])
+            pool = [extract_info(p['Name']) for p in roster if extract_info(p['Name'])[1] not in used_names]
+
+            # Eksikleri havuzdan tamamla
+            def fill_slots(current_list, target_count, label):
+                while len(current_list) < target_count:
+                    if pool:
+                        current_list.append(pool.pop(0))
+                    else:
+                        # Havuz da bittiyse (Çok nadir)
+                        current_list.append((label[0], label))
+                return current_list
+
+            final_gk = fill_slots(gks, 1, "Kaleci")[:1]
+            final_df = fill_slots(dfs, 4, "Defans")[:4]
+            final_mf = fill_slots(mfs, 4, "Ortasaha")[:4]
+            final_fw = fill_slots(fws, 2, "Forvet")[:2]
+            
+            return final_gk, final_df, final_mf, final_fw
 
         ev_gk, ev_df, ev_mf, ev_fw = get_formation(m['Ev'])
         dep_gk, dep_df, dep_mf, dep_fw = get_formation(m['Dep'])
@@ -515,18 +559,15 @@ elif mode == "Haftalık İlerleme" and st.session_state['page'] == 'dashboard':
                     if res==2 and hg<=ag: hg=ag+1
                     elif res==0 and ag<=hg: ag=hg+1
                     elif res==1: hg=ag=int((hg+ag)/2)
-                    
                     stats = generate_live_stats(h, a, hg, ag); h_sc = simulate_scorers(h, hg); a_sc = simulate_scorers(a, ag)
                     tbl = st.session_state['weekly_table']
                     tbl[h]['P']+=1; tbl[a]['P']+=1; tbl[h]['GF']+=hg; tbl[a]['GF']+=ag; tbl[h]['GA']+=ag; tbl[a]['GA']+=hg; tbl[h]['GD']+=(hg-ag); tbl[a]['GD']+=(ag-hg)
                     if res==2: tbl[h]['W']+=1; tbl[h]['Pts']+=3; tbl[a]['L']+=1
                     elif res==1: tbl[h]['D']+=1; tbl[h]['Pts']+=1; tbl[a]['D']+=1; tbl[a]['Pts']+=1
                     else: tbl[a]['W']+=1; tbl[a]['Pts']+=3; tbl[h]['L']+=1
-                    
                     match_data = {'Ev': h, 'Dep': a, 'HG': hg, 'AG': ag, 'Skor': f"{hg}-{ag}", 'Stats': stats, 'Ev_Goller': h_sc, 'Dep_Goller': a_sc}
                     st.session_state['weekly_history'].append(match_data)
                     results.append(match_data)
-                
                 st.session_state['current_week'] += 1; st.session_state['last_results'] = results; st.rerun()
         else:
             c2.success("Sezon Bitti!")
