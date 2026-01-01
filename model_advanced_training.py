@@ -35,7 +35,7 @@ def normalize_name(name):
         "Sheffield Utd": "Sheffield United", "Brentford": "Brentford",
         "Bournemouth": "Bournemouth", "AFC Bournemouth": "Bournemouth", "Fulham": "Fulham",
         "Brighton & Hove Albion": "Brighton", "Brighton and Hove Albion": "Brighton", 
-        "Brighton FC": "Brighton"
+        "Brighton FC": "Brighton", "Nottingham Forest": "Nottingham Forest"
     }
     return replacements.get(name, name)
 
@@ -87,13 +87,15 @@ def calculate_team_power(group):
 team_fifa_stats = players.groupby(['Team', 'SeasonYear']).apply(calculate_team_power, include_groups=False).reset_index()
 
 # ---------------------------------------------------------
-# 4. KADRO LİSTELERİ VE MANUEL YAMA
+# 4. KADRO LİSTELERİ VE GENİŞLETİLMİŞ MANUEL YAMA
 # ---------------------------------------------------------
 print("Kadro listeleri oluşturuluyor...")
 latest_year = players['SeasonYear'].max()
 latest_players = players[players['SeasonYear'] == latest_year].copy()
 all_match_teams = set(matches['HomeTeam'].unique()) | set(matches['AwayTeam'].unique())
-all_match_teams.add("Brighton") 
+
+# Eksik olma ihtimali yüksek takımları manuel listeye ekleyelim
+if "Brighton" not in all_match_teams: all_match_teams.add("Brighton")
 
 team_rosters = {}
 for team in all_match_teams:
@@ -102,12 +104,10 @@ for team in all_match_teams:
         roster = team_p.sort_values(by=['Finishing', 'Overall'], ascending=False).head(15)
         team_rosters[team] = roster[['Name', 'Finishing', pos_col]].rename(columns={pos_col: 'Position'}).to_dict('records')
     else:
-        # Eğer veri setinde yoksa, "Golcü, Kaptan" yazmak yerine aşağıdaki manuel listeyi kullanacağız
         team_rosters[team] = [] 
 
-# --- MANUEL KADRO YAMASI (EKSİK TAKIMLAR İÇİN) ---
-# Luton Town, Sheffield Utd, Burnley gibi takımlar FIFA verisinde eksik olabilir.
-# Buraya gerçek oyuncularını ekliyoruz.
+# --- MANUEL KADRO YAMASI (GENİŞLETİLMİŞ LİSTE) ---
+# Buradaki amaç gollerin tek bir oyuncuya yığılmasını engellemek için her takıma en az 4-5 golcü yazmaktır.
 
 manual_squads = {
     "Luton Town": [
@@ -115,31 +115,66 @@ manual_squads = {
         {"Name": "Elijah Adebayo", "Finishing": 76, "Position": "FW"},
         {"Name": "Ross Barkley", "Finishing": 74, "Position": "MF"},
         {"Name": "Tahith Chong", "Finishing": 70, "Position": "MF"},
-        {"Name": "Chiedozie Ogbene", "Finishing": 68, "Position": "FW"},
-        {"Name": "Cauley Woodrow", "Finishing": 67, "Position": "FW"},
-        {"Name": "Alfie Doughty", "Finishing": 65, "Position": "MF"},
+        {"Name": "Chiedozie Ogbene", "Finishing": 69, "Position": "FW"},
+        {"Name": "Andros Townsend", "Finishing": 71, "Position": "MF"}
     ],
     "Sheffield United": [
-        {"Name": "Cameron Archer", "Finishing": 76, "Position": "FW"},
-        {"Name": "Oli McBurnie", "Finishing": 75, "Position": "FW"},
-        {"Name": "Gustavo Hamer", "Finishing": 74, "Position": "MF"},
-        {"Name": "Ben Brereton Díaz", "Finishing": 75, "Position": "FW"},
-        {"Name": "James McAtee", "Finishing": 72, "Position": "MF"},
+        {"Name": "Cameron Archer", "Finishing": 75, "Position": "FW"},
+        {"Name": "Oli McBurnie", "Finishing": 74, "Position": "FW"},
+        {"Name": "Gustavo Hamer", "Finishing": 73, "Position": "MF"},
+        {"Name": "Ben Brereton Díaz", "Finishing": 76, "Position": "FW"},
+        {"Name": "James McAtee", "Finishing": 71, "Position": "MF"}
     ],
     "Burnley": [
-        {"Name": "Lyle Foster", "Finishing": 76, "Position": "FW"},
-        {"Name": "Zeki Amdouni", "Finishing": 75, "Position": "FW"},
-        {"Name": "David Datro Fofana", "Finishing": 74, "Position": "FW"},
-        {"Name": "Josh Brownhill", "Finishing": 72, "Position": "MF"},
-        {"Name": "Wilson Odobert", "Finishing": 71, "Position": "FW"},
+        {"Name": "Lyle Foster", "Finishing": 75, "Position": "FW"},
+        {"Name": "Zeki Amdouni", "Finishing": 74, "Position": "FW"},
+        {"Name": "David Datro Fofana", "Finishing": 73, "Position": "FW"},
+        {"Name": "Josh Brownhill", "Finishing": 71, "Position": "MF"},
+        {"Name": "Wilson Odobert", "Finishing": 70, "Position": "FW"}
     ],
-    "Brighton": [ # Brighton eğer yine çıkmazsa diye garanti olsun
+    "Brighton": [
         {"Name": "Joao Pedro", "Finishing": 79, "Position": "FW"},
         {"Name": "Evan Ferguson", "Finishing": 78, "Position": "FW"},
-        {"Name": "Kaoru Mitoma", "Finishing": 77, "Position": "FW"},
-        {"Name": "Pascal Gross", "Finishing": 76, "Position": "MF"},
-        {"Name": "Simon Adingra", "Finishing": 75, "Position": "FW"},
-        {"Name": "Danny Welbeck", "Finishing": 76, "Position": "FW"},
+        {"Name": "Kaoru Mitoma", "Finishing": 76, "Position": "FW"},
+        {"Name": "Pascal Gross", "Finishing": 75, "Position": "MF"},
+        {"Name": "Simon Adingra", "Finishing": 74, "Position": "FW"},
+        {"Name": "Danny Welbeck", "Finishing": 75, "Position": "FW"}
+    ],
+    "Fulham": [ # ARTIK 'FULHAM FORVET' OLMAYACAK
+        {"Name": "Rodrigo Muniz", "Finishing": 78, "Position": "FW"},
+        {"Name": "Raúl Jiménez", "Finishing": 77, "Position": "FW"},
+        {"Name": "Alex Iwobi", "Finishing": 73, "Position": "MF"},
+        {"Name": "Andreas Pereira", "Finishing": 74, "Position": "MF"},
+        {"Name": "Harry Wilson", "Finishing": 75, "Position": "FW"},
+        {"Name": "Willian", "Finishing": 74, "Position": "FW"}
+    ],
+    "Bournemouth": [
+        {"Name": "Dominic Solanke", "Finishing": 80, "Position": "FW"},
+        {"Name": "Antoine Semenyo", "Finishing": 75, "Position": "FW"},
+        {"Name": "Justin Kluivert", "Finishing": 74, "Position": "FW"},
+        {"Name": "Marcus Tavernier", "Finishing": 72, "Position": "MF"},
+        {"Name": "Enes Ünal", "Finishing": 76, "Position": "FW"}
+    ],
+    "Brentford": [
+        {"Name": "Ivan Toney", "Finishing": 81, "Position": "FW"},
+        {"Name": "Bryan Mbeumo", "Finishing": 77, "Position": "FW"},
+        {"Name": "Yoane Wissa", "Finishing": 76, "Position": "FW"},
+        {"Name": "Neal Maupay", "Finishing": 75, "Position": "FW"},
+        {"Name": "Mathias Jensen", "Finishing": 70, "Position": "MF"}
+    ],
+    "Nottingham Forest": [
+        {"Name": "Chris Wood", "Finishing": 78, "Position": "FW"},
+        {"Name": "Taiwo Awoniyi", "Finishing": 77, "Position": "FW"},
+        {"Name": "Morgan Gibbs-White", "Finishing": 74, "Position": "MF"},
+        {"Name": "Anthony Elanga", "Finishing": 73, "Position": "FW"},
+        {"Name": "Callum Hudson-Odoi", "Finishing": 72, "Position": "FW"}
+    ],
+    "Crystal Palace": [ # Eksik olma ihtimaline karşı
+        {"Name": "Jean-Philippe Mateta", "Finishing": 78, "Position": "FW"},
+        {"Name": "Eberechi Eze", "Finishing": 77, "Position": "MF"},
+        {"Name": "Michael Olise", "Finishing": 76, "Position": "FW"},
+        {"Name": "Odsonne Édouard", "Finishing": 75, "Position": "FW"},
+        {"Name": "Jordan Ayew", "Finishing": 72, "Position": "FW"}
     ]
 }
 
@@ -156,6 +191,7 @@ for team_name, squad in manual_squads.items():
 # Hala boş kalan varsa son çare generic isimler
 for team in all_match_teams:
     if not team_rosters.get(team):
+        print(f"⚠️ {team} için hala kadro yok, generic isimler atanıyor.")
         team_rosters[team] = [
             {'Name': f'{team} Forvet', 'Finishing': 75, 'Position': 'FW'},
             {'Name': f'{team} Kaptan', 'Finishing': 70, 'Position': 'MF'}
@@ -236,9 +272,9 @@ export_data = {
     'model': model,
     'performance_profiles': performance_profiles,
     'fifa_profiles': latest_fifa,
-    'team_rosters': team_rosters, # <-- Artık Luton, Sheffield gerçek oyuncularla dolu
+    'team_rosters': team_rosters, 
     'real_23_24_data': real_23_24_df
 }
 
 joblib.dump(export_data, 'super_model.pkl')
-print(f"✅ BAŞARILI! Luton, Sheffield, Burnley ve Brighton kadroları güncellendi.")
+print(f"✅ BAŞARILI! Fulham ve diğer takımların kadroları eklendi. 'super_model.pkl' güncellendi.")
