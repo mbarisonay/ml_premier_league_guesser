@@ -11,7 +11,7 @@ player_data_file = 'ALL_FIFA_STATS_FINAL.csv'
 
 print("Veriler yükleniyor...")
 matches = pd.read_csv(match_data_file)
-# Tüm string sütunlarını temizle
+# String temizliği
 df_obj = matches.select_dtypes(['object'])
 matches[df_obj.columns] = df_obj.apply(lambda x: x.str.strip())
 
@@ -20,7 +20,7 @@ df_obj_p = players.select_dtypes(['object'])
 players[df_obj_p.columns] = df_obj_p.apply(lambda x: x.str.strip())
 
 # ---------------------------------------------------------
-# 1. TEMİZLİK VE İSİM EŞLEŞTİRME (KAPSAMLI)
+# 1. İSİM EŞLEŞTİRME
 # ---------------------------------------------------------
 def normalize_name(name):
     name = str(name).strip()
@@ -29,17 +29,12 @@ def normalize_name(name):
         "Man United": "Manchester United", "Spurs": "Tottenham Hotspur", 
         "Tottenham": "Tottenham Hotspur", "Newcastle": "Newcastle United", 
         "West Ham": "West Ham United", "Wolves": "Wolverhampton Wanderers", 
-        "Wolverhampton": "Wolverhampton Wanderers",
-        "Nott'm Forest": "Nottingham Forest", "Leicester": "Leicester City", 
-        "Norwich": "Norwich City", "Leeds": "Leeds United", 
+        "Wolverhampton": "Wolverhampton Wanderers", "Nott'm Forest": "Nottingham Forest", 
+        "Leicester": "Leicester City", "Norwich": "Norwich City", "Leeds": "Leeds United", 
         "Luton": "Luton Town", "Sheff Utd": "Sheffield United",
         "Sheffield Utd": "Sheffield United", "Brentford": "Brentford",
-        "Bournemouth": "Bournemouth", "AFC Bournemouth": "Bournemouth",
-        "Fulham": "Fulham",
-        # BRIGHTON VARYASYONLARI
-        "Brighton & Hove Albion": "Brighton",
-        "Brighton and Hove Albion": "Brighton",
-        "Brighton & Hove Albion FC": "Brighton",
+        "Bournemouth": "Bournemouth", "AFC Bournemouth": "Bournemouth", "Fulham": "Fulham",
+        "Brighton & Hove Albion": "Brighton", "Brighton and Hove Albion": "Brighton", 
         "Brighton FC": "Brighton"
     }
     return replacements.get(name, name)
@@ -56,9 +51,8 @@ def get_season_year(x):
 players['SeasonYear'] = players['Season'].apply(get_season_year)
 
 # ---------------------------------------------------------
-# 2. POZİSYON TAHMİNİ (Eğer Position sütunu yoksa)
+# 2. POZİSYON TAHMİNİ
 # ---------------------------------------------------------
-# Sütun isimlerini kontrol et
 cols = players.columns.tolist()
 pos_col = None
 for c in ['Position', 'Best Position', 'Preferred Positions', 'Pos']:
@@ -67,33 +61,19 @@ for c in ['Position', 'Best Position', 'Preferred Positions', 'Pos']:
         break
 
 if pos_col is None:
-    print("⚠️ 'Position' sütunu bulunamadı. İstatistiklere göre tahmin ediliyor...")
-    
+    print("⚠️ 'Position' sütunu bulunamadı. Tahmin ediliyor...")
     def infer_position(row):
-        # Güvenli veri alma
         def g(k): return row.get(k, 0)
-        
-        # Basit mantık
-        gk_stats = (g('GKDiving') + g('GKHandling')) / 2
-        def_stats = (g('StandingTackle') + g('Interceptions') + g('Marking')) / 3
-        mid_stats = (g('ShortPassing') + g('BallControl') + g('Vision')) / 3
-        att_stats = (g('Finishing') + g('Volleys') + g('Positioning')) / 3
-        
-        if gk_stats > 40: return 'GK'
-        if def_stats > mid_stats and def_stats > att_stats: return 'DF'
-        if att_stats > mid_stats and att_stats > def_stats: return 'FW'
+        if (g('GKDiving') + g('GKHandling'))/2 > 40: return 'GK'
+        if (g('Finishing') + g('Volleys'))/2 > (g('StandingTackle') + g('Interceptions'))/2: return 'FW'
         return 'MF'
-
     players['Position'] = players.apply(infer_position, axis=1)
     pos_col = 'Position'
-else:
-    print(f"✅ Pozisyon sütunu bulundu: {pos_col}")
 
 # ---------------------------------------------------------
-# 3. TAKIM GÜÇLERİ HESAPLAMA
+# 3. TAKIM GÜÇLERİ
 # ---------------------------------------------------------
 print("Takım güçleri hesaplanıyor...")
-
 def calculate_team_power(group):
     top_15 = group.nlargest(15, 'Overall')
     return pd.Series({
@@ -104,19 +84,16 @@ def calculate_team_power(group):
         'FIFA_Physical': top_15[['Stamina', 'Strength', 'SprintSpeed', 'Acceleration']].mean().mean()
     })
 
-# Warning fix
 team_fifa_stats = players.groupby(['Team', 'SeasonYear']).apply(calculate_team_power, include_groups=False).reset_index()
 
 # ---------------------------------------------------------
-# 4. KADRO LİSTELERİ
+# 4. KADRO LİSTELERİ VE MANUEL YAMA
 # ---------------------------------------------------------
 print("Kadro listeleri oluşturuluyor...")
 latest_year = players['SeasonYear'].max()
 latest_players = players[players['SeasonYear'] == latest_year].copy()
 all_match_teams = set(matches['HomeTeam'].unique()) | set(matches['AwayTeam'].unique())
-
-# BRIGHTON ZORLAMASI: Listeye manuel ekle
-all_match_teams.add("Brighton")
+all_match_teams.add("Brighton") 
 
 team_rosters = {}
 for team in all_match_teams:
@@ -125,15 +102,67 @@ for team in all_match_teams:
         roster = team_p.sort_values(by=['Finishing', 'Overall'], ascending=False).head(15)
         team_rosters[team] = roster[['Name', 'Finishing', pos_col]].rename(columns={pos_col: 'Position'}).to_dict('records')
     else:
-        # Takım FIFA'da yoksa uydurma kadro
+        # Eğer veri setinde yoksa, "Golcü, Kaptan" yazmak yerine aşağıdaki manuel listeyi kullanacağız
+        team_rosters[team] = [] 
+
+# --- MANUEL KADRO YAMASI (EKSİK TAKIMLAR İÇİN) ---
+# Luton Town, Sheffield Utd, Burnley gibi takımlar FIFA verisinde eksik olabilir.
+# Buraya gerçek oyuncularını ekliyoruz.
+
+manual_squads = {
+    "Luton Town": [
+        {"Name": "Carlton Morris", "Finishing": 78, "Position": "FW"},
+        {"Name": "Elijah Adebayo", "Finishing": 76, "Position": "FW"},
+        {"Name": "Ross Barkley", "Finishing": 74, "Position": "MF"},
+        {"Name": "Tahith Chong", "Finishing": 70, "Position": "MF"},
+        {"Name": "Chiedozie Ogbene", "Finishing": 68, "Position": "FW"},
+        {"Name": "Cauley Woodrow", "Finishing": 67, "Position": "FW"},
+        {"Name": "Alfie Doughty", "Finishing": 65, "Position": "MF"},
+    ],
+    "Sheffield United": [
+        {"Name": "Cameron Archer", "Finishing": 76, "Position": "FW"},
+        {"Name": "Oli McBurnie", "Finishing": 75, "Position": "FW"},
+        {"Name": "Gustavo Hamer", "Finishing": 74, "Position": "MF"},
+        {"Name": "Ben Brereton Díaz", "Finishing": 75, "Position": "FW"},
+        {"Name": "James McAtee", "Finishing": 72, "Position": "MF"},
+    ],
+    "Burnley": [
+        {"Name": "Lyle Foster", "Finishing": 76, "Position": "FW"},
+        {"Name": "Zeki Amdouni", "Finishing": 75, "Position": "FW"},
+        {"Name": "David Datro Fofana", "Finishing": 74, "Position": "FW"},
+        {"Name": "Josh Brownhill", "Finishing": 72, "Position": "MF"},
+        {"Name": "Wilson Odobert", "Finishing": 71, "Position": "FW"},
+    ],
+    "Brighton": [ # Brighton eğer yine çıkmazsa diye garanti olsun
+        {"Name": "Joao Pedro", "Finishing": 79, "Position": "FW"},
+        {"Name": "Evan Ferguson", "Finishing": 78, "Position": "FW"},
+        {"Name": "Kaoru Mitoma", "Finishing": 77, "Position": "FW"},
+        {"Name": "Pascal Gross", "Finishing": 76, "Position": "MF"},
+        {"Name": "Simon Adingra", "Finishing": 75, "Position": "FW"},
+        {"Name": "Danny Welbeck", "Finishing": 76, "Position": "FW"},
+    ]
+}
+
+# Eksik takımları manuel listeyle doldur
+for team_name, squad in manual_squads.items():
+    # Eğer takımın kadrosu boşsa veya çok azsa (hata varsa) manuel listeyi kullan
+    if team_name in team_rosters and len(team_rosters[team_name]) < 3:
+        print(f"🛠️  {team_name} için manuel kadro yüklendi.")
+        team_rosters[team_name] = squad
+    # Eğer takım listede hiç yoksa ekle
+    elif team_name not in team_rosters:
+        team_rosters[team_name] = squad
+
+# Hala boş kalan varsa son çare generic isimler
+for team in all_match_teams:
+    if not team_rosters.get(team):
         team_rosters[team] = [
-            {'Name': f'{team} Golcü', 'Finishing': 75, 'Position': 'FW'},
-            {'Name': f'{team} Kaptan', 'Finishing': 70, 'Position': 'MF'},
-            {'Name': f'{team} Kanat', 'Finishing': 72, 'Position': 'RW'}
+            {'Name': f'{team} Forvet', 'Finishing': 75, 'Position': 'FW'},
+            {'Name': f'{team} Kaptan', 'Finishing': 70, 'Position': 'MF'}
         ]
 
 # ---------------------------------------------------------
-# 5. VERİ BİRLEŞTİRME
+# 5. VERİ BİRLEŞTİRME VE EĞİTİM
 # ---------------------------------------------------------
 print("Veriler birleştiriliyor...")
 matches['SeasonYear'] = matches['Date'].apply(lambda x: x.year if x.month >= 8 else x.year - 1)
@@ -148,7 +177,7 @@ df_merged = pd.merge(df_merged, team_fifa_stats, left_on=['AwayTeam', 'SeasonYea
 df_merged.rename(columns={c: f'Away_{c}' for c in cols}, inplace=True)
 df_merged.drop(columns=['Team'], inplace=True)
 
-# NaN Doldur (Eksik veriler için lig ortalaması)
+# NaN Doldur
 for c in cols:
     mean_val = df_merged[f'Home_{c}'].mean()
     df_merged[f'Home_{c}'] = df_merged[f'Home_{c}'].fillna(mean_val)
@@ -160,14 +189,11 @@ def get_result(row):
     else: return 0
 df_merged['MatchResult'] = df_merged.apply(get_result, axis=1)
 
-# ---------------------------------------------------------
-# 6. MODEL EĞİTİMİ VE PROFİL OLUŞTURMA
-# ---------------------------------------------------------
+# Profil Oluşturma
 split_date = pd.to_datetime("2023-08-01")
 train_df = df_merged[df_merged['Date'] < split_date].copy()
 real_23_24_df = df_merged[df_merged['Date'] >= split_date].copy()
 
-# Performans Profilleri (Matches'dan gelen)
 stat_cols = ['Shots', 'SOT', 'Corners', 'Possession']
 h_ren = {f'Home{c}': c for c in stat_cols}; h_ren['HomeTeam'] = 'Team'
 a_ren = {f'Away{c}': c for c in stat_cols}; a_ren['AwayTeam'] = 'Team'
@@ -176,35 +202,26 @@ h_stats = train_df[['HomeTeam'] + ['Home' + c for c in stat_cols]].rename(column
 a_stats = train_df[['AwayTeam'] + ['Away' + c for c in stat_cols]].rename(columns=a_ren)
 performance_profiles = pd.concat([h_stats, a_stats]).groupby('Team').mean()
 
-# FIFA Profilleri
 latest_fifa = team_fifa_stats[team_fifa_stats['SeasonYear'] == team_fifa_stats['SeasonYear'].max()]
 latest_fifa = latest_fifa.drop_duplicates('Team').set_index('Team')[cols]
 
-# --- BRIGHTON YAMASI (ZORLA EKLEME) ---
-# Eğer Brighton istatistiklerde yoksa (ki yoktu), ortalama bir profil oluşturup ekle.
-if "Brighton" not in performance_profiles.index:
-    print("🛠️  Brighton performans profiline MANUEL ekleniyor...")
-    avg_perf = performance_profiles.mean()
-    performance_profiles.loc["Brighton"] = avg_perf
-
-if "Brighton" not in latest_fifa.index:
-    print("🛠️  Brighton FIFA profiline MANUEL ekleniyor...")
-    avg_fifa = latest_fifa.mean()
-    latest_fifa.loc["Brighton"] = avg_fifa
+# Eksik Profilleri Tamamla
+for t in all_match_teams:
+    if t not in performance_profiles.index:
+        performance_profiles.loc[t] = performance_profiles.mean()
+    if t not in latest_fifa.index:
+        latest_fifa.loc[t] = latest_fifa.mean()
 
 # Model Eğitimi
 X, y = [], []
 print("Model eğitiliyor...")
-
 for idx, row in train_df.iterrows():
     h, a = row['HomeTeam'], row['AwayTeam']
-    # Artık Brighton eklendiği için hata vermeyecek
     if h in performance_profiles.index and a in performance_profiles.index:
         h_perf = performance_profiles.loc[h].values
         a_perf = performance_profiles.loc[a].values
         h_fifa = row[[f'Home_{c}' for c in cols]].values.astype(float)
         a_fifa = row[[f'Away_{c}' for c in cols]].values.astype(float)
-        
         X.append(np.concatenate([h_perf, h_fifa, a_perf, a_fifa]))
         y.append(row['MatchResult'])
 
@@ -214,17 +231,14 @@ y = np.array(y)
 model = RandomForestClassifier(n_estimators=200, max_depth=12, random_state=42)
 model.fit(X, y)
 
-# ---------------------------------------------------------
-# 7. KAYIT
-# ---------------------------------------------------------
+# Kayıt
 export_data = {
     'model': model,
     'performance_profiles': performance_profiles,
     'fifa_profiles': latest_fifa,
-    'team_rosters': team_rosters,
+    'team_rosters': team_rosters, # <-- Artık Luton, Sheffield gerçek oyuncularla dolu
     'real_23_24_data': real_23_24_df
 }
 
 joblib.dump(export_data, 'super_model.pkl')
-print(f"✅ İŞLEM TAMAM! 'Brighton' dahil tüm takımlar hazır.")
-print(f"✅ {len(team_rosters)} takımın kadrosu kaydedildi.")
+print(f"✅ BAŞARILI! Luton, Sheffield, Burnley ve Brighton kadroları güncellendi.")
