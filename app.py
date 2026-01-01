@@ -26,6 +26,52 @@ st.markdown("""
     .score-text { font-size: 20px; font-weight: bold; color: white; padding: 0 15px; }
     .team-name { font-size: 16px; font-weight: 500; }
     .scorer-item { font-size: 12px; color: #ccc; margin-bottom: 2px; }
+                .dashboard-card {
+        background-color: #1e1e1e;
+        border: 1px solid #333;
+        border-radius: 10px;
+        padding: 15px;
+        margin-bottom: 15px;
+    }
+    .pitch-container {
+        background: linear-gradient(to bottom, #2e7d32, #1b5e20); /* Çim Rengi */
+        border: 2px solid #fff;
+        border-radius: 10px;
+        padding: 20px;
+        text-align: center;
+        height: 400px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-around;
+        position: relative;
+    }
+    .pitch-line {
+        border-top: 1px solid rgba(255,255,255,0.3);
+        width: 100%;
+        position: absolute;
+        top: 50%;
+    }
+    .player-dot {
+        background-color: white;
+        color: black;
+        border-radius: 50%;
+        width: 25px;
+        height: 25px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 10px;
+        font-weight: bold;
+        margin: 0 5px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.5);
+    }
+    .player-row {
+        display: flex;
+        justify-content: center;
+        margin: 5px 0;
+    }
+    .small-table-header { font-size: 12px; color: #aaa; }
+    .small-table-row { font-size: 13px; border-bottom: 1px solid #333; padding: 3px 0; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -264,50 +310,155 @@ def go_match(m): st.session_state['view_match'] = m; st.session_state['page'] = 
 if st.session_state['page'] == 'match_detail':
     m = st.session_state['view_match']
     back_target = 'team_detail' if st.session_state.get('last_page') == 'team_detail' else 'dashboard'
-    st.button("🔙 Geri Dön", on_click=lambda: st.session_state.update({'page': back_target}))
     
-    st.markdown(f"""
-    <div style="text-align: center; background: #0e1117; padding: 20px; border: 1px solid #333; border-radius: 12px; margin-bottom: 25px;">
-        <h1 style="color: white; margin:0;">
-            <span style="color:#4CAF50">{m['Ev']}</span> <span style="margin: 0 15px;">{m['HG']} - {m['AG']}</span> <span style="color:#FF5252">{m['Dep']}</span>
-        </h1>
-    </div>""", unsafe_allow_html=True)
-    
-    c1, c2 = st.columns([1, 1], gap="large")
-    stats = m.get('Stats', generate_live_stats(m['Ev'], m['Dep'], m['HG'], m['AG']))
-    h_sc = m.get('Ev_Goller', simulate_scorers(m['Ev'], m['HG']))
-    a_sc = m.get('Dep_Goller', simulate_scorers(m['Dep'], m['AG']))
+    # Üst Bar: Geri Butonu ve Başlık
+    c_back, c_title = st.columns([1, 5])
+    c_back.button("🔙 Geri", on_click=lambda: st.session_state.update({'page': back_target}))
+    c_title.markdown(f"## 🏟️ Maç Merkezi: {m['Ev']} vs {m['Dep']}")
 
-    with c1:
-        st.subheader("📊 İstatistikler")
-        for k, v in stats.items(): draw_stat_bar(k, v[0], v[1])
-    with c2:
-        st.subheader("⚽ Maç Olayları")
-        gc1, gc2 = st.columns(2)
-        with gc1:
-            st.markdown(f"**{m['Ev']}**")
-            for s in h_sc: st.markdown(f"<div class='scorer-item'>{s}</div>", unsafe_allow_html=True)
-        with gc2:
-            st.markdown(f"**{m['Dep']}**")
-            for s in a_sc: st.markdown(f"<div class='scorer-item'>{s}</div>", unsafe_allow_html=True)
+    # --- ANA DÜZEN (3 SÜTUN) ---
+    col1, col2, col3 = st.columns([1.2, 2, 1.2], gap="medium")
 
-elif st.session_state['page'] == 'team_detail':
-    team = st.session_state['view_team']
-    st.button("🔙 Puan Tablosuna Dön", on_click=go_home)
-    st.header(f"📅 {team} Fikstürü")
-    hist = pd.DataFrame()
-    if mode == "Haftalık İlerleme" and 'weekly_history' in st.session_state: hist = pd.DataFrame(st.session_state['weekly_history'])
-    elif mode == "Tüm Sezonu Simüle Et" and 'sim_history' in st.session_state: hist = st.session_state['sim_history']
-    
-    if not hist.empty:
-        tm = hist[(hist['Ev'] == team) | (hist['Dep'] == team)].reset_index(drop=True)
-        event = st.dataframe(tm[['Ev', 'Skor', 'Dep']], on_select="rerun", selection_mode="single-row", height=600, use_container_width=True, hide_index=True)
-        if len(event.selection.rows) > 0:
-            match_data = tm.iloc[event.selection.rows[0]].to_dict()
-            st.session_state['last_page'] = 'team_detail'
-            go_match(match_data)
-            st.rerun()
-    else: st.warning("Henüz maç yok.")
+    # SOL KOLON: MİNİ LİG TABLOSU & FORM
+    with col1:
+        st.markdown('<div class="dashboard-card">', unsafe_allow_html=True)
+        st.subheader("Ligdeki Durum")
+        
+        # Güncel tabloyu al
+        current_table = pd.DataFrame()
+        if 'weekly_table' in st.session_state:
+            current_table = pd.DataFrame.from_dict(st.session_state['weekly_table'], orient='index').sort_values(by=['Pts', 'GD'], ascending=False)
+        elif 'sim_table' in st.session_state:
+            current_table = st.session_state['sim_table']
+        
+        if not current_table.empty:
+            # Sadece bu iki takımı ve etrafındakileri gösterelim (veya ilk 5'i)
+            st.markdown(f"<div class='small-table-header'>Takım &nbsp;&nbsp;&nbsp; P &nbsp;&nbsp; Av &nbsp;&nbsp; Pts</div>", unsafe_allow_html=True)
+            
+            # İlk 5 + Bizim takımlar
+            display_teams = list(current_table.index[:4])
+            if m['Ev'] not in display_teams: display_teams.append(m['Ev'])
+            if m['Dep'] not in display_teams: display_teams.append(m['Dep'])
+            
+            # Tekrar sırala
+            subset = current_table.loc[current_table.index.intersection(display_teams)]
+            
+            for team_name, row in subset.iterrows():
+                color = "#4CAF50" if team_name == m['Ev'] else ("#FF5252" if team_name == m['Dep'] else "white")
+                st.markdown(f"""
+                <div class='small-table-row' style='color:{color}; display:flex; justify-content:space-between;'>
+                    <span>{team_name}</span>
+                    <span>{row['P']} | {row['GD']} | <b>{row['Pts']}</b></span>
+                </div>
+                """, unsafe_allow_html=True)
+        else:
+            st.info("Lig tablosu henüz oluşmadı.")
+        st.markdown('</div>', unsafe_allow_html=True)
+
+        # Golcüler Kutusu
+        st.markdown('<div class="dashboard-card">', unsafe_allow_html=True)
+        st.subheader("⚽ Goller")
+        
+        h_sc = m.get('Ev_Goller', [])
+        a_sc = m.get('Dep_Goller', [])
+        
+        st.markdown(f"**{m['Ev']}**")
+        if h_sc:
+            for s in h_sc: st.caption(s)
+        else: st.caption("-")
+        
+        st.divider()
+        
+        st.markdown(f"**{m['Dep']}**")
+        if a_sc:
+            for s in a_sc: st.caption(s)
+        else: st.caption("-")
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    # ORTA KOLON: SAHA GÖRÜNÜMÜ & SKOR
+    with col2:
+        # Skor Kartı
+        st.markdown(f"""
+        <div style="text-align: center; background: #000; padding: 15px; border-radius: 10px; margin-bottom: 10px; border: 1px solid #444;">
+            <h1 style="color: white; margin:0; font-size: 36px;">
+                <span style="color:#4CAF50">{m['HG']}</span> 
+                <span style="color:#888; font-size: 20px;">vs</span> 
+                <span style="color:#FF5252">{m['AG']}</span>
+            </h1>
+            <p style="color:#aaa; margin:0;">Maç Sonucu</p>
+        </div>
+        """, unsafe_allow_html=True)
+
+        # SAHA SİMÜLASYONU
+        # Takımların kadrolarını alıp pozisyona göre dizer
+        def get_formation(team_name):
+            roster = team_rosters.get(team_name, [])
+            # Pozisyonlara göre grupla (Basit 4-4-2 mantığı gibi gösterelim)
+            fw = [p['Name'].split()[-1] for p in roster if p['Position'] == 'FW'][:2]
+            mf = [p['Name'].split()[-1] for p in roster if p['Position'] == 'MF'][:4]
+            df = [p['Name'].split()[-1] for p in roster if p['Position'] in ['DF', 'CB', 'LB', 'RB']][:4]
+            gk = [p['Name'].split()[-1] for p in roster if p['Position'] == 'GK'][:1]
+            if not gk: gk = ["GK"]
+            if not fw: fw = ["FW1", "FW2"]
+            return gk, df, mf, fw
+
+        ev_gk, ev_df, ev_mf, ev_fw = get_formation(m['Ev'])
+        dep_gk, dep_df, dep_mf, dep_fw = get_formation(m['Dep'])
+
+        # Sahayı Çiz (HTML/CSS)
+        st.markdown(f"""
+        <div class="pitch-container">
+            <div class="pitch-line"></div>
+            
+            <!-- DEPLASMAN (Üstte) -->
+            <div style="color: #FF5252; font-weight:bold; margin-bottom:5px;">{m['Dep']} (4-4-2)</div>
+            <div class="player-row">{ "".join([f"<div class='player-dot' title='{x}'>{x[0]}</div>" for x in dep_gk]) }</div>
+            <div class="player-row">{ "".join([f"<div class='player-dot' title='{x}'>{x[0]}</div>" for x in dep_df]) }</div>
+            <div class="player-row">{ "".join([f"<div class='player-dot' title='{x}'>{x[0]}</div>" for x in dep_mf]) }</div>
+            <div class="player-row">{ "".join([f"<div class='player-dot' title='{x}'>{x[0]}</div>" for x in dep_fw]) }</div>
+            
+            <div style="height: 20px;"></div> <!-- Orta Saha Boşluğu -->
+            
+            <!-- EV SAHİBİ (Altta) -->
+            <div class="player-row">{ "".join([f"<div class='player-dot' title='{x}'>{x[0]}</div>" for x in ev_fw]) }</div>
+            <div class="player-row">{ "".join([f"<div class='player-dot' title='{x}'>{x[0]}</div>" for x in ev_mf]) }</div>
+            <div class="player-row">{ "".join([f"<div class='player-dot' title='{x}'>{x[0]}</div>" for x in ev_df]) }</div>
+            <div class="player-row">{ "".join([f"<div class='player-dot' title='{x}'>{x[0]}</div>" for x in ev_gk]) }</div>
+            <div style="color: #4CAF50; font-weight:bold; margin-top:5px;">{m['Ev']} (4-4-2)</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    # SAĞ KOLON: İSTATİSTİKLER & GRAFİKLER
+    with col3:
+        st.markdown('<div class="dashboard-card">', unsafe_allow_html=True)
+        st.subheader("📊 Maç İstatistikleri")
+        
+        # Eğer istatistik yoksa üret
+        stats = m.get('Stats', generate_live_stats(m['Ev'], m['Dep'], m['HG'], m['AG']))
+        
+        for k, v in stats.items():
+            draw_stat_bar(k, v[0], v[1])
+        st.markdown('</div>', unsafe_allow_html=True)
+
+        # Kazanma İhtimali Grafiği (Basit Pie Chart)
+        st.markdown('<div class="dashboard-card">', unsafe_allow_html=True)
+        st.write("📈 **Olasılık Dağılımı**")
+        
+        # Modelden olasılıkları tekrar çekmemiz lazım (Anlık görsel için)
+        vec = np.concatenate([get_team_vector(m['Ev']), get_team_vector(m['Dep'])]).reshape(1, -1)
+        probs = model.predict_proba(vec)[0] # [Dep, Ber, Ev]
+        
+        fig_pie, ax_pie = plt.subplots(figsize=(3, 3))
+        ax_pie.pie(
+            [probs[2], probs[1], probs[0]], 
+            labels=[m['Ev'], 'X', m['Dep']],
+            colors=['#4CAF50', '#888', '#FF5252'],
+            autopct='%1.0f%%',
+            textprops={'color':"white", 'fontsize': 8}
+        )
+        fig_pie.patch.set_alpha(0) # Şeffaf arka plan
+        st.pyplot(fig_pie)
+        st.markdown('</div>', unsafe_allow_html=True)
 
 # =========================================================
 # MOD: HAFTALIK İLERLEME
