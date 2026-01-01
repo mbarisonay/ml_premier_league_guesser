@@ -12,7 +12,7 @@ import seaborn as sns
 # ---------------------------------------------------------
 st.set_page_config(page_title="PL AI Super Hub", layout="wide", page_icon="⚽")
 
-# Grafik Ayarları (Karanlık Mod)
+# Grafik Ayarları
 plt.style.use('dark_background')
 
 st.markdown("""
@@ -26,50 +26,12 @@ st.markdown("""
     .score-text { font-size: 20px; font-weight: bold; color: white; padding: 0 15px; }
     .team-name { font-size: 16px; font-weight: 500; }
     .scorer-item { font-size: 12px; color: #ccc; margin-bottom: 2px; }
-                .dashboard-card {
-        background-color: #1e1e1e;
-        border: 1px solid #333;
-        border-radius: 10px;
-        padding: 15px;
-        margin-bottom: 15px;
-    }
-    .pitch-container {
-        background: linear-gradient(to bottom, #2e7d32, #1b5e20); /* Çim Rengi */
-        border: 2px solid #fff;
-        border-radius: 10px;
-        padding: 20px;
-        text-align: center;
-        height: 400px;
-        display: flex;
-        flex-direction: column;
-        justify-content: space-around;
-        position: relative;
-    }
-    .pitch-line {
-        border-top: 1px solid rgba(255,255,255,0.3);
-        width: 100%;
-        position: absolute;
-        top: 50%;
-    }
-    .player-dot {
-        background-color: white;
-        color: black;
-        border-radius: 50%;
-        width: 25px;
-        height: 25px;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 10px;
-        font-weight: bold;
-        margin: 0 5px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.5);
-    }
-    .player-row {
-        display: flex;
-        justify-content: center;
-        margin: 5px 0;
-    }
+    /* YENİ DASHBOARD STİLLERİ */
+    .dashboard-card { background-color: #1e1e1e; border: 1px solid #333; border-radius: 10px; padding: 15px; margin-bottom: 15px; }
+    .pitch-container { background: linear-gradient(to bottom, #2e7d32, #1b5e20); border: 2px solid #fff; border-radius: 10px; padding: 20px; text-align: center; height: 400px; display: flex; flex-direction: column; justify-content: space-around; position: relative; }
+    .pitch-line { border-top: 1px solid rgba(255,255,255,0.3); width: 100%; position: absolute; top: 50%; }
+    .player-dot { background-color: white; color: black; border-radius: 50%; width: 25px; height: 25px; display: inline-flex; align-items: center; justify-content: center; font-size: 10px; font-weight: bold; margin: 0 5px; box-shadow: 0 2px 4px rgba(0,0,0,0.5); }
+    .player-row { display: flex; justify-content: center; margin: 5px 0; }
     .small-table-header { font-size: 12px; color: #aaa; }
     .small-table-row { font-size: 13px; border-bottom: 1px solid #333; padding: 3px 0; }
 </style>
@@ -111,7 +73,6 @@ all_teams = sorted(pd.concat([real_df['HomeTeam'], real_df['AwayTeam']]).unique(
 def get_team_vector(team_name):
     if team_name in perf_profiles.index: perf = perf_profiles.loc[team_name].values
     else: perf = perf_profiles.mean().values 
-    
     needed = ['FIFA_Overall', 'FIFA_Attack', 'FIFA_Midfield', 'FIFA_Defense', 'FIFA_Physical']
     if team_name in fifa_profiles.index: fifa = fifa_profiles.loc[team_name][needed].values
     else: fifa = fifa_profiles[needed].mean().values
@@ -126,14 +87,11 @@ def simulate_scorers(team, goals):
     else:
         names = [p['Name'] for p in roster]
         finishing = np.array([p['Finishing'] for p in roster], dtype=float)
-        weights = np.exp(finishing / 12)
-        weights /= weights.sum()
-    
+        weights = np.exp(finishing / 12); weights /= weights.sum()
     for _ in range(goals):
         scorer = np.random.choice(names, p=weights)
         minute = np.random.randint(1, 98)
         scorers.append(f"⚽ {scorer} ({minute}')")
-    
     scorers.sort(key=lambda x: int(x.split('(')[1].split("'")[0]))
     return scorers
 
@@ -142,7 +100,6 @@ def generate_live_stats(home, away, hg, ag):
     if hg > ag: base_poss = 45
     elif ag > hg: base_poss = 55
     h_poss = np.random.randint(base_poss-5, base_poss+10); a_poss = 100 - h_poss
-    
     h_shots = max(hg + np.random.randint(2, 8), int(hg * 2.5) + 5)
     a_shots = max(ag + np.random.randint(2, 8), int(ag * 2.5) + 5)
     h_sot = max(hg, int(h_shots * np.random.uniform(0.3, 0.6)))
@@ -150,14 +107,10 @@ def generate_live_stats(home, away, hg, ag):
     h_xg = round(h_sot * 0.12 + (h_shots - h_sot) * 0.03 + (hg * 0.4), 2)
     a_xg = round(a_sot * 0.12 + (a_shots - a_sot) * 0.03 + (ag * 0.4), 2)
     h_pass = h_poss*4 + np.random.randint(50,100); a_pass = a_poss*4 + np.random.randint(50,100)
-
     return {
-        'Topla Oynama (%)': (h_poss, a_poss),
-        'Gol Beklentisi (xG)': (h_xg, a_xg),
-        'Toplam Şut': (h_shots, a_shots),
-        'İsabetli Şut': (h_sot, a_sot),
-        'Pas Sayısı': (h_pass, a_pass),
-        'Korner': (np.random.randint(2, 12), np.random.randint(2, 12)),
+        'Topla Oynama (%)': (h_poss, a_poss), 'Gol Beklentisi (xG)': (h_xg, a_xg),
+        'Toplam Şut': (h_shots, a_shots), 'İsabetli Şut': (h_sot, a_sot),
+        'Pas Sayısı': (h_pass, a_pass), 'Korner': (np.random.randint(2, 12), np.random.randint(2, 12)),
         'Faul': (np.random.randint(4, 15), np.random.randint(4, 15))
     }
 
@@ -175,86 +128,37 @@ def draw_stat_bar(stat_name, h_val, a_val):
     """, unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# 4. GELİŞMİŞ ANALİZ FONKSİYONLARI (YENİ GRAFİKLER)
+# 4. GELİŞMİŞ ANALİZ GRAFİKLERİ
 # ---------------------------------------------------------
 def plot_title_race(history_df, all_teams):
-    # Puanları hafta hafta hesapla
-    points = {t: [0] for t in all_teams}
-    # Her 10 maç = 1 Hafta (20 takım için)
-    matches_per_week = len(all_teams) // 2
-    
-    current_week = 0
-    match_counter = 0
-    
-    # Geçici puan tablosu
-    temp_points = {t: 0 for t in all_teams}
+    if history_df.empty: return
+    points = {t: [0] for t in all_teams}; matches_per_week = len(all_teams) // 2
+    current_week = 0; match_counter = 0; temp_points = {t: 0 for t in all_teams}
     
     for _, row in history_df.iterrows():
-        h, a = row['Ev'], row['Dep']
-        hg, ag = row['HG'], row['AG']
-        
+        h, a = row['Ev'], row['Dep']; hg, ag = row['HG'], row['AG']
         if hg > ag: temp_points[h] += 3
         elif ag > hg: temp_points[a] += 3
         else: temp_points[h] += 1; temp_points[a] += 1
-        
         match_counter += 1
         if match_counter % matches_per_week == 0:
             current_week += 1
-            for t in all_teams:
-                points[t].append(temp_points[t])
-                
-    # DataFrame'e çevir
+            for t in all_teams: points[t].append(temp_points[t])
+            
     race_df = pd.DataFrame(points)
-    
-    # Sadece ilk 6 takımı ve seçili takımları çiz (karmaşayı önlemek için)
     top_teams = sorted(temp_points, key=temp_points.get, reverse=True)[:6]
-    
     fig, ax = plt.subplots(figsize=(12, 6))
-    for team in top_teams:
-        ax.plot(race_df[team], label=team, linewidth=2.5)
-    
-    ax.set_title("🏆 Şampiyonluk Yarışı (Haftalık Puan Değişimi)")
-    ax.set_xlabel("Hafta")
-    ax.set_ylabel("Puan")
-    ax.legend()
-    ax.grid(True, linestyle='--', alpha=0.3)
+    for team in top_teams: ax.plot(race_df[team], label=team, linewidth=2.5)
+    ax.set_title("🏆 Şampiyonluk Yarışı"); ax.set_xlabel("Hafta"); ax.set_ylabel("Puan"); ax.legend(); ax.grid(True, linestyle='--', alpha=0.3)
     st.pyplot(fig)
 
 def plot_attack_vs_defense(table_df):
     fig, ax = plt.subplots(figsize=(10, 6))
     sns.scatterplot(data=table_df, x='GF', y='GA', s=100, hue='Pts', palette='viridis', legend=False, ax=ax)
-    
-    # Ortalamalar
-    avg_gf = table_df['GF'].mean()
-    avg_ga = table_df['GA'].mean()
-    
-    ax.axvline(avg_gf, color='gray', linestyle='--', alpha=0.5)
-    ax.axhline(avg_ga, color='gray', linestyle='--', alpha=0.5)
-    
-    # Bölgeleri İsimlendir
-    ax.text(table_df['GF'].max(), table_df['GA'].min(), "ŞAMPİYON ADAYLARI\n(Çok Atıp, Az Yiyen)", ha='right', va='bottom', color='#4CAF50', fontsize=9)
-    ax.text(table_df['GF'].min(), table_df['GA'].max(), "KÜME DÜŞME ADAYLARI\n(Az Atıp, Çok Yiyen)", ha='left', va='top', color='#FF5252', fontsize=9)
-    
-    # Takım isimlerini yaz
-    for i in range(table_df.shape[0]):
-        ax.text(table_df.GF[i]+0.5, table_df.GA[i], table_df.index[i], fontsize=8, color='white')
-        
-    ax.set_title("🛡️ Hücum vs. Defans Performansı")
-    ax.set_xlabel("Atılan Gol (GF)")
-    ax.set_ylabel("Yenilen Gol (GA) - (Aşağısı Daha İyi)")
-    ax.invert_yaxis() # Futbolda az gol yemek iyidir, ekseni ters çevir
-    st.pyplot(fig)
-
-def plot_wdl_distribution(table_df):
-    # W-D-L verilerini al
-    wdl_df = table_df[['W', 'D', 'L']].sort_values(by='W', ascending=True)
-    
-    fig, ax = plt.subplots(figsize=(10, 8))
-    wdl_df.plot(kind='barh', stacked=True, color=['#4CAF50', '#FFC107', '#FF5252'], ax=ax)
-    
-    ax.set_title("📊 Takım Karneleri (Galibiyet / Beraberlik / Mağlubiyet)")
-    ax.set_xlabel("Maç Sayısı")
-    ax.legend(["Galibiyet", "Beraberlik", "Mağlubiyet"])
+    avg_gf = table_df['GF'].mean(); avg_ga = table_df['GA'].mean()
+    ax.axvline(avg_gf, color='gray', linestyle='--', alpha=0.5); ax.axhline(avg_ga, color='gray', linestyle='--', alpha=0.5)
+    for i in range(table_df.shape[0]): ax.text(table_df.GF[i]+0.5, table_df.GA[i], table_df.index[i], fontsize=8, color='white')
+    ax.set_title("🛡️ Hücum vs. Defans"); ax.set_xlabel("Atılan Gol (GF)"); ax.set_ylabel("Yenilen Gol (GA)"); ax.invert_yaxis()
     st.pyplot(fig)
 
 def plot_top_scorers(history_df):
@@ -264,31 +168,19 @@ def plot_top_scorers(history_df):
             for g in row['Ev_Goller']: all_goals.append({'Name': g.split('(')[0].replace('⚽', '').strip(), 'Team': row['Ev']})
         if 'Dep_Goller' in row and isinstance(row['Dep_Goller'], list):
             for g in row['Dep_Goller']: all_goals.append({'Name': g.split('(')[0].replace('⚽', '').strip(), 'Team': row['Dep']})
-    
     if not all_goals: st.warning("Gol verisi yok."); return
-
     df_goals = pd.DataFrame(all_goals)
-    top_scorers = df_goals['Name'].value_counts().head(10).reset_index()
-    top_scorers.columns = ['Name', 'Goals']
-    
+    top_scorers = df_goals['Name'].value_counts().head(10).reset_index(); top_scorers.columns = ['Name', 'Goals']
     fig, ax = plt.subplots(figsize=(10, 6))
     sns.barplot(x='Goals', y='Name', data=top_scorers, palette='magma', ax=ax)
-    ax.set_title('🥇 Simülasyon Gol Krallığı')
-    st.pyplot(fig)
+    ax.set_title('🥇 Gol Krallığı'); st.pyplot(fig)
 
 def plot_feature_importance():
-    feature_names = [
-        'Home_Shots', 'Home_SOT', 'Home_Corners', 'Home_Possession',
-        'Home_FIFA_Overall', 'Home_FIFA_Attack', 'Home_FIFA_Midfield', 'Home_FIFA_Defense', 'Home_FIFA_Physical',
-        'Away_Shots', 'Away_SOT', 'Away_Corners', 'Away_Possession',
-        'Away_FIFA_Overall', 'Away_FIFA_Attack', 'Away_FIFA_Midfield', 'Away_FIFA_Defense', 'Away_FIFA_Physical'
-    ]
+    feature_names = ['Home_Shots', 'Home_SOT', 'Home_Corners', 'Home_Possession', 'Home_FIFA_Overall', 'Home_FIFA_Attack', 'Home_FIFA_Midfield', 'Home_FIFA_Defense', 'Home_FIFA_Physical', 'Away_Shots', 'Away_SOT', 'Away_Corners', 'Away_Possession', 'Away_FIFA_Overall', 'Away_FIFA_Attack', 'Away_FIFA_Midfield', 'Away_FIFA_Defense', 'Away_FIFA_Physical']
     importances = model.feature_importances_
     df_imp = pd.DataFrame({'Feature': feature_names, 'Importance': importances}).sort_values('Importance', ascending=False).head(10)
-    fig, ax = plt.subplots(figsize=(10, 6))
-    sns.barplot(x='Importance', y='Feature', data=df_imp, palette='viridis', ax=ax)
-    ax.set_title('🧠 Yapay Zeka Neye Dikkat Etti?')
-    st.pyplot(fig)
+    fig, ax = plt.subplots(figsize=(10, 6)); sns.barplot(x='Importance', y='Feature', data=df_imp, palette='viridis', ax=ax)
+    ax.set_title('🧠 Yapay Zeka Karar Mekanizması'); st.pyplot(fig)
 
 # ---------------------------------------------------------
 # 5. SAYFA YÖNETİMİ
@@ -300,168 +192,146 @@ if 'view_match' not in st.session_state: st.session_state['view_match'] = None
 st.sidebar.title("Menü")
 mode = st.sidebar.radio("Mod Seç:", ["Haftalık İlerleme", "Tüm Sezonu Simüle Et", "Gerçek vs Yapay Zeka"])
 
+# Navigasyon
 def go_home(): st.session_state['page'] = 'dashboard'
 def go_team(t): st.session_state['view_team'] = t; st.session_state['page'] = 'team_detail'
 def go_match(m): st.session_state['view_match'] = m; st.session_state['page'] = 'match_detail'
 
 # =========================================================
-# MAÇ DETAYI VE TAKIM FİKSTÜRÜ
+# SAYFA 3: MAÇ DETAYI (YENİ DASHBOARD GÖRÜNÜMÜ)
 # =========================================================
 if st.session_state['page'] == 'match_detail':
     m = st.session_state['view_match']
     back_target = 'team_detail' if st.session_state.get('last_page') == 'team_detail' else 'dashboard'
     
-    # Üst Bar: Geri Butonu ve Başlık
     c_back, c_title = st.columns([1, 5])
     c_back.button("🔙 Geri", on_click=lambda: st.session_state.update({'page': back_target}))
-    c_title.markdown(f"## 🏟️ Maç Merkezi: {m['Ev']} vs {m['Dep']}")
+    c_title.markdown(f"## 🏟️ {m['Ev']} vs {m['Dep']}")
 
-    # --- ANA DÜZEN (3 SÜTUN) ---
     col1, col2, col3 = st.columns([1.2, 2, 1.2], gap="medium")
 
-    # SOL KOLON: MİNİ LİG TABLOSU & FORM
+    # SOL KOLON: MİNİ LİG TABLOSU
     with col1:
         st.markdown('<div class="dashboard-card">', unsafe_allow_html=True)
         st.subheader("Ligdeki Durum")
-        
-        # Güncel tabloyu al
         current_table = pd.DataFrame()
-        if 'weekly_table' in st.session_state:
+        if 'weekly_table' in st.session_state and mode == "Haftalık İlerleme":
             current_table = pd.DataFrame.from_dict(st.session_state['weekly_table'], orient='index').sort_values(by=['Pts', 'GD'], ascending=False)
-        elif 'sim_table' in st.session_state:
+        elif 'sim_table' in st.session_state and mode == "Tüm Sezonu Simüle Et":
             current_table = st.session_state['sim_table']
         
         if not current_table.empty:
-            # Sadece bu iki takımı ve etrafındakileri gösterelim (veya ilk 5'i)
             st.markdown(f"<div class='small-table-header'>Takım &nbsp;&nbsp;&nbsp; P &nbsp;&nbsp; Av &nbsp;&nbsp; Pts</div>", unsafe_allow_html=True)
-            
-            # İlk 5 + Bizim takımlar
             display_teams = list(current_table.index[:4])
             if m['Ev'] not in display_teams: display_teams.append(m['Ev'])
             if m['Dep'] not in display_teams: display_teams.append(m['Dep'])
-            
-            # Tekrar sırala
             subset = current_table.loc[current_table.index.intersection(display_teams)]
-            
             for team_name, row in subset.iterrows():
                 color = "#4CAF50" if team_name == m['Ev'] else ("#FF5252" if team_name == m['Dep'] else "white")
-                st.markdown(f"""
-                <div class='small-table-row' style='color:{color}; display:flex; justify-content:space-between;'>
-                    <span>{team_name}</span>
-                    <span>{row['P']} | {row['GD']} | <b>{row['Pts']}</b></span>
-                </div>
-                """, unsafe_allow_html=True)
-        else:
-            st.info("Lig tablosu henüz oluşmadı.")
+                st.markdown(f"<div class='small-table-row' style='color:{color}; display:flex; justify-content:space-between;'><span>{team_name}</span><span>{row['P']} | {row['GD']} | <b>{row['Pts']}</b></span></div>", unsafe_allow_html=True)
+        else: st.info("Tablo oluşmadı.")
         st.markdown('</div>', unsafe_allow_html=True)
 
-        # Golcüler Kutusu
         st.markdown('<div class="dashboard-card">', unsafe_allow_html=True)
         st.subheader("⚽ Goller")
-        
-        h_sc = m.get('Ev_Goller', [])
-        a_sc = m.get('Dep_Goller', [])
-        
-        st.markdown(f"**{m['Ev']}**")
-        if h_sc:
-            for s in h_sc: st.caption(s)
-        else: st.caption("-")
-        
+        h_sc = m.get('Ev_Goller', simulate_scorers(m['Ev'], m['HG']))
+        a_sc = m.get('Dep_Goller', simulate_scorers(m['Dep'], m['AG']))
+        st.markdown(f"**{m['Ev']}**"); [st.caption(s) for s in h_sc] if h_sc else st.caption("-")
         st.divider()
-        
-        st.markdown(f"**{m['Dep']}**")
-        if a_sc:
-            for s in a_sc: st.caption(s)
-        else: st.caption("-")
+        st.markdown(f"**{m['Dep']}**"); [st.caption(s) for s in a_sc] if a_sc else st.caption("-")
         st.markdown('</div>', unsafe_allow_html=True)
 
-    # ORTA KOLON: SAHA GÖRÜNÜMÜ & SKOR
+    # ORTA KOLON: SAHA
     with col2:
-        # Skor Kartı
-        st.markdown(f"""
-        <div style="text-align: center; background: #000; padding: 15px; border-radius: 10px; margin-bottom: 10px; border: 1px solid #444;">
-            <h1 style="color: white; margin:0; font-size: 36px;">
-                <span style="color:#4CAF50">{m['HG']}</span> 
-                <span style="color:#888; font-size: 20px;">vs</span> 
-                <span style="color:#FF5252">{m['AG']}</span>
-            </h1>
-            <p style="color:#aaa; margin:0;">Maç Sonucu</p>
-        </div>
-        """, unsafe_allow_html=True)
-
-        # SAHA SİMÜLASYONU
-        # Takımların kadrolarını alıp pozisyona göre dizer
+        st.markdown(f"""<div style="text-align: center; background: #000; padding: 15px; border-radius: 10px; margin-bottom: 10px; border: 1px solid #444;"><h1 style="color: white; margin:0; font-size: 36px;"><span style="color:#4CAF50">{m['HG']}</span> <span style="color:#888; font-size: 20px;">vs</span> <span style="color:#FF5252">{m['AG']}</span></h1><p style="color:#aaa; margin:0;">Maç Sonucu</p></div>""", unsafe_allow_html=True)
+        
         def get_formation(team_name):
             roster = team_rosters.get(team_name, [])
-            # Pozisyonlara göre grupla (Basit 4-4-2 mantığı gibi gösterelim)
             fw = [p['Name'].split()[-1] for p in roster if p['Position'] == 'FW'][:2]
             mf = [p['Name'].split()[-1] for p in roster if p['Position'] == 'MF'][:4]
             df = [p['Name'].split()[-1] for p in roster if p['Position'] in ['DF', 'CB', 'LB', 'RB']][:4]
             gk = [p['Name'].split()[-1] for p in roster if p['Position'] == 'GK'][:1]
-            if not gk: gk = ["GK"]
+            if not gk: gk = ["GK"]; 
             if not fw: fw = ["FW1", "FW2"]
             return gk, df, mf, fw
 
         ev_gk, ev_df, ev_mf, ev_fw = get_formation(m['Ev'])
         dep_gk, dep_df, dep_mf, dep_fw = get_formation(m['Dep'])
 
-        # Sahayı Çiz (HTML/CSS)
         st.markdown(f"""
         <div class="pitch-container">
             <div class="pitch-line"></div>
-            
-            <!-- DEPLASMAN (Üstte) -->
             <div style="color: #FF5252; font-weight:bold; margin-bottom:5px;">{m['Dep']} (4-4-2)</div>
             <div class="player-row">{ "".join([f"<div class='player-dot' title='{x}'>{x[0]}</div>" for x in dep_gk]) }</div>
             <div class="player-row">{ "".join([f"<div class='player-dot' title='{x}'>{x[0]}</div>" for x in dep_df]) }</div>
             <div class="player-row">{ "".join([f"<div class='player-dot' title='{x}'>{x[0]}</div>" for x in dep_mf]) }</div>
             <div class="player-row">{ "".join([f"<div class='player-dot' title='{x}'>{x[0]}</div>" for x in dep_fw]) }</div>
-            
-            <div style="height: 20px;"></div> <!-- Orta Saha Boşluğu -->
-            
-            <!-- EV SAHİBİ (Altta) -->
+            <div style="height: 20px;"></div>
             <div class="player-row">{ "".join([f"<div class='player-dot' title='{x}'>{x[0]}</div>" for x in ev_fw]) }</div>
             <div class="player-row">{ "".join([f"<div class='player-dot' title='{x}'>{x[0]}</div>" for x in ev_mf]) }</div>
             <div class="player-row">{ "".join([f"<div class='player-dot' title='{x}'>{x[0]}</div>" for x in ev_df]) }</div>
             <div class="player-row">{ "".join([f"<div class='player-dot' title='{x}'>{x[0]}</div>" for x in ev_gk]) }</div>
             <div style="color: #4CAF50; font-weight:bold; margin-top:5px;">{m['Ev']} (4-4-2)</div>
-        </div>
-        """, unsafe_allow_html=True)
+        </div>""", unsafe_allow_html=True)
 
-    # SAĞ KOLON: İSTATİSTİKLER & GRAFİKLER
+    # SAĞ KOLON: İSTATİSTİKLER
     with col3:
         st.markdown('<div class="dashboard-card">', unsafe_allow_html=True)
-        st.subheader("📊 Maç İstatistikleri")
-        
-        # Eğer istatistik yoksa üret
+        st.subheader("📊 İstatistikler")
         stats = m.get('Stats', generate_live_stats(m['Ev'], m['Dep'], m['HG'], m['AG']))
-        
-        for k, v in stats.items():
-            draw_stat_bar(k, v[0], v[1])
+        for k, v in stats.items(): draw_stat_bar(k, v[0], v[1])
         st.markdown('</div>', unsafe_allow_html=True)
-
-        # Kazanma İhtimali Grafiği (Basit Pie Chart)
+        
         st.markdown('<div class="dashboard-card">', unsafe_allow_html=True)
-        st.write("📈 **Olasılık Dağılımı**")
-        
-        # Modelden olasılıkları tekrar çekmemiz lazım (Anlık görsel için)
+        st.write("📈 **Olasılık**")
         vec = np.concatenate([get_team_vector(m['Ev']), get_team_vector(m['Dep'])]).reshape(1, -1)
-        probs = model.predict_proba(vec)[0] # [Dep, Ber, Ev]
-        
+        probs = model.predict_proba(vec)[0]
         fig_pie, ax_pie = plt.subplots(figsize=(3, 3))
-        ax_pie.pie(
-            [probs[2], probs[1], probs[0]], 
-            labels=[m['Ev'], 'X', m['Dep']],
-            colors=['#4CAF50', '#888', '#FF5252'],
-            autopct='%1.0f%%',
-            textprops={'color':"white", 'fontsize': 8}
-        )
-        fig_pie.patch.set_alpha(0) # Şeffaf arka plan
+        ax_pie.pie([probs[2], probs[1], probs[0]], labels=[m['Ev'], 'X', m['Dep']], colors=['#4CAF50', '#888', '#FF5252'], autopct='%1.0f%%', textprops={'color':"white", 'fontsize': 8})
+        fig_pie.patch.set_alpha(0)
         st.pyplot(fig_pie)
         st.markdown('</div>', unsafe_allow_html=True)
 
 # =========================================================
-# MOD: HAFTALIK İLERLEME
+# SAYFA 2: TAKIM FİKSTÜRÜ
+# =========================================================
+elif st.session_state['page'] == 'team_detail':
+    team = st.session_state['view_team']
+    st.button("🔙 Ana Sayfaya Dön", on_click=go_home)
+    st.header(f"📅 {team} Fikstürü")
+    
+    # Hangi modun verisini kullanacağız?
+    hist = pd.DataFrame()
+    if mode == "Haftalık İlerleme" and 'weekly_history' in st.session_state:
+        # Listeyi DataFrame'e çevir (Güvenlik için)
+        if isinstance(st.session_state['weekly_history'], list):
+            hist = pd.DataFrame(st.session_state['weekly_history'])
+        else:
+            hist = st.session_state['weekly_history']
+            
+    elif mode == "Tüm Sezonu Simüle Et" and 'sim_history' in st.session_state:
+        hist = st.session_state['sim_history']
+    
+    if not hist.empty:
+        # Takıma göre filtrele
+        team_matches = hist[(hist['Ev'] == team) | (hist['Dep'] == team)].reset_index(drop=True)
+        
+        event = st.dataframe(
+            team_matches[['Ev', 'Skor', 'Dep']],
+            on_select="rerun", selection_mode="single-row", 
+            height=600, use_container_width=True, hide_index=True
+        )
+        
+        if len(event.selection.rows) > 0:
+            match_data = team_matches.iloc[event.selection.rows[0]].to_dict()
+            st.session_state['last_page'] = 'team_detail' # Geri dönüş için işaret
+            go_match(match_data)
+            st.rerun()
+    else:
+        st.warning("Henüz oynanmış maç bulunmuyor. Lütfen simülasyonu başlatın.")
+
+# =========================================================
+# SAYFA 1: DASHBOARD (MODLARA GÖRE)
 # =========================================================
 elif mode == "Haftalık İlerleme" and st.session_state['page'] == 'dashboard':
     st.title("📅 Haftalık Lig Simülasyonu")
@@ -511,8 +381,11 @@ elif mode == "Haftalık İlerleme" and st.session_state['page'] == 'dashboard':
                     if res==2: tbl[h]['W']+=1; tbl[h]['Pts']+=3; tbl[a]['L']+=1
                     elif res==1: tbl[h]['D']+=1; tbl[h]['Pts']+=1; tbl[a]['D']+=1; tbl[a]['Pts']+=1
                     else: tbl[a]['W']+=1; tbl[a]['Pts']+=3; tbl[h]['L']+=1
-                    st.session_state['weekly_history'].append({'Ev': h, 'Dep': a, 'HG': hg, 'AG': ag, 'Skor': f"{hg}-{ag}", 'Stats': stats, 'Ev_Goller': h_sc, 'Dep_Goller': a_sc})
-                    results.append({'Ev': h, 'Dep': a, 'HG': hg, 'AG': ag, 'Skor': f"{hg}-{ag}", 'Stats': stats, 'Ev_Goller': h_sc, 'Dep_Goller': a_sc})
+                    
+                    match_data = {'Ev': h, 'Dep': a, 'HG': hg, 'AG': ag, 'Skor': f"{hg}-{ag}", 'Stats': stats, 'Ev_Goller': h_sc, 'Dep_Goller': a_sc}
+                    st.session_state['weekly_history'].append(match_data)
+                    results.append(match_data)
+                
                 st.session_state['current_week'] += 1; st.session_state['last_results'] = results; st.rerun()
         else:
             c2.success("Sezon Bitti!")
@@ -520,15 +393,11 @@ elif mode == "Haftalık İlerleme" and st.session_state['page'] == 'dashboard':
         
         if c3.button("Sıfırla"): st.session_state['weekly_fixture'] = None; st.session_state['show_analysis'] = False; st.rerun()
         
-        # --- ANALİZ PANELİ (YENİ) ---
         if st.session_state.get('show_analysis'):
             st.divider(); st.title("📈 Sezon Sonu Analizi")
-            # Sekmeler: Gol Krallığı | Şampiyonluk Yarışı | Hücum vs Defans | Galibiyet Karnesi | Model Beyni
             t1, t2, t3, t4, t5 = st.tabs(["Gol Krallığı", "🏆 Şampiyonluk Yarışı", "🛡️ Hücum vs Defans", "📊 Galibiyet Karnesi", "🧠 Yapay Zeka"])
-            
-            sim_df = pd.DataFrame.from_dict(st.session_state['weekly_table'], orient='index')
             hist_df = pd.DataFrame(st.session_state['weekly_history'])
-            
+            sim_df = pd.DataFrame.from_dict(st.session_state['weekly_table'], orient='index')
             with t1: plot_top_scorers(hist_df)
             with t2: plot_title_race(hist_df, all_teams)
             with t3: plot_attack_vs_defense(sim_df)
@@ -536,19 +405,29 @@ elif mode == "Haftalık İlerleme" and st.session_state['page'] == 'dashboard':
             with t5: plot_feature_importance()
             st.divider()
 
-        # Maçlar ve Tablo
         col_res, col_tab = st.columns([4, 5])
         with col_res:
             if 'last_results' in st.session_state:
                 st.subheader(f"{st.session_state['current_week']}. Hafta Sonuçları")
                 for m in st.session_state['last_results']:
-                    with st.expander(f"{m['Ev']} {m['Skor']} {m['Dep']}"):
-                        for k, v in m['Stats'].items(): draw_stat_bar(k, v[0], v[1])
-                        c_h, c_a = st.columns(2)
-                        with c_h: 
-                            for s in m['Ev_Goller']: st.caption(s)
-                        with c_a: 
-                            for s in m['Dep_Goller']: st.caption(s)
+                    # Maç Kartı
+                    with st.container():
+                        st.markdown(f"""
+                        <div class="match-card">
+                            <div style="display:flex; justify-content:space-between; align-items:center;">
+                                <div style="width:40%; text-align:right;" class="team-name">{m['Ev']}</div>
+                                <div class="score-text">{m['HG']} - {m['AG']}</div>
+                                <div style="width:40%; text-align:left;" class="team-name">{m['Dep']}</div>
+                            </div>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        
+                        # Detay Butonu (YENİ EKLEME)
+                        if st.button("Detaylar", key=f"btn_{m['Ev']}_{m['Dep']}_{time.time()}_{random.randint(0,1000)}"):
+                            st.session_state['last_page'] = 'dashboard'
+                            go_match(m)
+                            st.rerun()
+
         with col_tab:
             st.subheader("Canlı Puan Durumu")
             df = pd.DataFrame.from_dict(st.session_state['weekly_table'], orient='index').sort_values(by=['Pts', 'GD'], ascending=False)
@@ -556,9 +435,6 @@ elif mode == "Haftalık İlerleme" and st.session_state['page'] == 'dashboard':
             if len(event.selection.rows) > 0:
                 team = df.index[event.selection.rows[0]]; st.session_state['last_page'] = 'dashboard'; go_team(team); st.rerun()
 
-# =========================================================
-# MOD: TÜM SEZONU SİMÜLE ET (DASHBOARD)
-# =========================================================
 elif mode == "Tüm Sezonu Simüle Et" and st.session_state['page'] == 'dashboard':
     st.title("⚡ Hızlı Simülasyon")
     if st.button("🚀 38 Haftayı Simüle Et", type="primary"):
@@ -589,14 +465,10 @@ elif mode == "Tüm Sezonu Simüle Et" and st.session_state['page'] == 'dashboard
         st.session_state['sim_done'] = True
 
     if st.session_state.get('sim_done'):
-        # --- GELİŞMİŞ RAPOR ---
         if st.button("📊 DETAYLI SEZON RAPORU", type="primary"):
             st.divider(); st.title("📈 Sezon Sonu Analizi")
             t1, t2, t3, t4, t5 = st.tabs(["Gol Krallığı", "🏆 Şampiyonluk Yarışı", "🛡️ Hücum vs Defans", "📊 Galibiyet Karnesi", "🧠 Yapay Zeka"])
-            
-            sim_df = st.session_state['sim_table']
-            hist_df = st.session_state['sim_history']
-            
+            sim_df = st.session_state['sim_table']; hist_df = st.session_state['sim_history']
             with t1: plot_top_scorers(hist_df)
             with t2: plot_title_race(hist_df, all_teams)
             with t3: plot_attack_vs_defense(sim_df)
@@ -611,9 +483,6 @@ elif mode == "Tüm Sezonu Simüle Et" and st.session_state['page'] == 'dashboard
         if len(event.selection.rows) > 0:
             team = df.index[event.selection.rows[0]]; st.session_state['last_page'] = 'dashboard'; go_team(team); st.rerun()
 
-# =========================================================
-# MOD: GERÇEK VS YAPAY ZEKA
-# =========================================================
 elif mode == "Gerçek vs Yapay Zeka":
     st.title("🤖 Yapay Zeka vs Gerçek (23/24)")
     @st.cache_data
@@ -626,12 +495,8 @@ elif mode == "Gerçek vs Yapay Zeka":
                 elif row['FTHG'] == row['FTAG']: tbl[h]['Pts']+=1; tbl[a]['Pts']+=1
                 else: tbl[a]['Pts']+=3
         return pd.DataFrame.from_dict(tbl, orient='index').sort_values(by='Pts', ascending=False)
-
     c1, c2 = st.columns(2)
-    with c1:
-        st.subheader("🌍 Gerçek"); rt = get_real_table_cached()
-        st.dataframe(rt.style.apply(lambda x: safe_style(x, rt), axis=1), height=700)
-    with c2:
-        st.subheader("🤖 Yapay Zeka")
-        if 'sim_table' in st.session_state: ai = st.session_state['sim_table'][['Pts']]; st.dataframe(ai.style.apply(lambda x: safe_style(x, ai), axis=1), height=700)
-        else: st.warning("Veri için 'Tüm Sezonu Simüle Et' modunu kullanın.")
+    with c1: st.subheader("🌍 Gerçek"); rt = get_real_table_cached(); st.dataframe(rt.style.apply(lambda x: safe_style(x, rt), axis=1), height=700)
+    with c2: st.subheader("🤖 Yapay Zeka"); 
+    if 'sim_table' in st.session_state: ai = st.session_state['sim_table'][['Pts']]; st.dataframe(ai.style.apply(lambda x: safe_style(x, ai), axis=1), height=700)
+    else: st.warning("Veri için 'Tüm Sezonu Simüle Et' modunu kullanın.")
