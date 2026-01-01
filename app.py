@@ -4,11 +4,16 @@ import numpy as np
 import joblib
 import time
 import random
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 # ---------------------------------------------------------
 # 1. SAYFA AYARLARI VE STİL
 # ---------------------------------------------------------
 st.set_page_config(page_title="PL AI Super Hub", layout="wide", page_icon="⚽")
+
+# Grafik Ayarları
+plt.style.use('dark_background') # Site temasına uygun olması için
 
 st.markdown("""
 <style>
@@ -87,7 +92,6 @@ def simulate_scorers(team, goals):
     return scorers
 
 def generate_live_stats(home, away, hg, ag):
-    # İstatistikleri oluşturup sayısal olarak döndürür
     base_poss = 50
     if hg > ag: base_poss = 45
     elif ag > hg: base_poss = 55
@@ -139,7 +143,86 @@ def draw_stat_bar(stat_name, h_val, a_val):
     """, unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# 4. SAYFA YÖNETİMİ
+# 4. ANALİZ FONKSİYONLARI (YENİ)
+# ---------------------------------------------------------
+def plot_feature_importance():
+    feature_names = [
+        'Home_Shots', 'Home_SOT', 'Home_Corners', 'Home_Possession',
+        'Home_FIFA_Overall', 'Home_FIFA_Attack', 'Home_FIFA_Midfield', 'Home_FIFA_Defense', 'Home_FIFA_Physical',
+        'Away_Shots', 'Away_SOT', 'Away_Corners', 'Away_Possession',
+        'Away_FIFA_Overall', 'Away_FIFA_Attack', 'Away_FIFA_Midfield', 'Away_FIFA_Defense', 'Away_FIFA_Physical'
+    ]
+    importances = model.feature_importances_
+    df_imp = pd.DataFrame({'Feature': feature_names, 'Importance': importances}).sort_values('Importance', ascending=False).head(10)
+    
+    fig, ax = plt.subplots(figsize=(10, 6))
+    sns.barplot(x='Importance', y='Feature', data=df_imp, palette='viridis', ax=ax)
+    ax.set_title('Yapay Zeka Karar Mekanizması (En Önemli 10 Faktör)')
+    ax.set_xlabel('Etki Düzeyi')
+    st.pyplot(fig)
+
+def plot_sim_vs_real_points(sim_table):
+    # Gerçek puanları hesapla
+    real_pts = {t: 0 for t in all_teams}
+    for _, row in real_df.iterrows():
+        h, a = row['HomeTeam'], row['AwayTeam']
+        if h in real_pts and a in real_pts:
+            if row['FTHG'] > row['FTAG']: real_pts[h]+=3
+            elif row['FTHG'] == row['FTAG']: real_pts[h]+=1; real_pts[a]+=1
+            else: real_pts[a]+=3
+    
+    df_real = pd.DataFrame.from_dict(real_pts, orient='index', columns=['Real_Pts'])
+    df_sim = sim_table[['Pts']].rename(columns={'Pts': 'Sim_Pts'})
+    
+    df_comp = df_real.join(df_sim).sort_values('Real_Pts', ascending=False)
+    
+    fig, ax = plt.subplots(figsize=(12, 6))
+    x = np.arange(len(df_comp))
+    width = 0.35
+    
+    ax.bar(x - width/2, df_comp['Real_Pts'], width, label='Gerçek (23/24)', color='#3498db')
+    ax.bar(x + width/2, df_comp['Sim_Pts'], width, label='Simülasyon', color='#e74c3c')
+    
+    ax.set_xticks(x)
+    ax.set_xticklabels(df_comp.index, rotation=90)
+    ax.legend()
+    ax.set_title('Gerçek vs. Simülasyon Puan Karşılaştırması')
+    st.pyplot(fig)
+
+def plot_top_scorers(history_df):
+    # Simülasyon geçmişinden golcüleri çek
+    all_goals = []
+    
+    # history_df içinde 'Ev_Goller' ve 'Dep_Goller' sütunları liste olarak saklanıyor
+    # Örnek: ['⚽ Haaland (34\')', '⚽ Foden (90\')']
+    
+    for _, row in history_df.iterrows():
+        # Güvenli erişim için kontrol
+        if 'Ev_Goller' in row and isinstance(row['Ev_Goller'], list):
+            for g in row['Ev_Goller']:
+                name = g.split('(')[0].replace('⚽', '').strip()
+                all_goals.append({'Name': name, 'Team': row['Ev']})
+                
+        if 'Dep_Goller' in row and isinstance(row['Dep_Goller'], list):
+            for g in row['Dep_Goller']:
+                name = g.split('(')[0].replace('⚽', '').strip()
+                all_goals.append({'Name': name, 'Team': row['Dep']})
+    
+    if not all_goals:
+        st.warning("Henüz gol verisi oluşmadı.")
+        return
+
+    df_goals = pd.DataFrame(all_goals)
+    top_scorers = df_goals['Name'].value_counts().head(10).reset_index()
+    top_scorers.columns = ['Name', 'Goals']
+    
+    fig, ax = plt.subplots(figsize=(10, 6))
+    sns.barplot(x='Goals', y='Name', data=top_scorers, palette='magma', ax=ax)
+    ax.set_title('Simülasyon Gol Krallığı (Top 10)')
+    st.pyplot(fig)
+
+# ---------------------------------------------------------
+# 5. SAYFA YÖNETİMİ
 # ---------------------------------------------------------
 if 'page' not in st.session_state: st.session_state['page'] = 'dashboard'
 if 'view_team' not in st.session_state: st.session_state['view_team'] = None
@@ -158,17 +241,13 @@ def go_match(m):
     st.session_state['page'] = 'match_detail'
 
 # =========================================================
-# ORTAK SAYFALAR (MAÇ DETAYI VE TAKIM FİKSTÜRÜ)
+# MAÇ DETAYI VE TAKIM FİKSTÜRÜ
 # =========================================================
-
-# --- MAÇ DETAYI SAYFASI (HER İKİ MOD İÇİN ORTAK) ---
 if st.session_state['page'] == 'match_detail':
     m = st.session_state['view_match']
-    # Nereye döneceğini belirle
     back_target = 'team_detail' if st.session_state.get('last_page') == 'team_detail' else 'dashboard'
     st.button("🔙 Geri Dön", on_click=lambda: st.session_state.update({'page': back_target}))
     
-    # Skorboard
     st.markdown(f"""
     <div style="text-align: center; background: #0e1117; padding: 20px; border: 1px solid #333; border-radius: 12px; margin-bottom: 25px;">
         <h1 style="color: white; margin:0;">
@@ -181,44 +260,30 @@ if st.session_state['page'] == 'match_detail':
     
     c1, c2 = st.columns([1, 1], gap="large")
     
-    # İstatistikler (Eğer kayıtlıysa kullan, yoksa üret)
-    match_stats = m.get('Stats')
-    if not match_stats:
-        match_stats = generate_live_stats(m['Ev'], m['Dep'], m['HG'], m['AG'])
-
-    # Golcüler (Eğer kayıtlıysa kullan, yoksa üret)
-    h_scorers = m.get('Ev_Goller')
-    if not h_scorers: h_scorers = simulate_scorers(m['Ev'], m['HG'])
-    
-    a_scorers = m.get('Dep_Goller')
-    if not a_scorers: a_scorers = simulate_scorers(m['Dep'], m['AG'])
+    # Verileri hazırla
+    stats = m.get('Stats', generate_live_stats(m['Ev'], m['Dep'], m['HG'], m['AG']))
+    h_sc = m.get('Ev_Goller', simulate_scorers(m['Ev'], m['HG']))
+    a_sc = m.get('Dep_Goller', simulate_scorers(m['Dep'], m['AG']))
 
     with c1:
         st.subheader("📊 İstatistikler")
-        for k, v in match_stats.items():
-            draw_stat_bar(k, v[0], v[1])
+        for k, v in stats.items(): draw_stat_bar(k, v[0], v[1])
 
     with c2:
         st.subheader("⚽ Maç Olayları")
         gc1, gc2 = st.columns(2)
         with gc1:
             st.markdown(f"**{m['Ev']}**")
-            if h_scorers:
-                for s in h_scorers: st.markdown(f"<div class='scorer-item'>{s}</div>", unsafe_allow_html=True)
-            else: st.caption("-")
+            for s in h_sc: st.markdown(f"<div class='scorer-item'>{s}</div>", unsafe_allow_html=True)
         with gc2:
             st.markdown(f"**{m['Dep']}**")
-            if a_scorers:
-                for s in a_scorers: st.markdown(f"<div class='scorer-item'>{s}</div>", unsafe_allow_html=True)
-            else: st.caption("-")
+            for s in a_sc: st.markdown(f"<div class='scorer-item'>{s}</div>", unsafe_allow_html=True)
 
-# --- TAKIM FİKSTÜRÜ SAYFASI ---
 elif st.session_state['page'] == 'team_detail':
     team = st.session_state['view_team']
     st.button("🔙 Puan Tablosuna Dön", on_click=go_home)
     st.header(f"📅 {team} Fikstürü")
     
-    # Hangi modun geçmişine bakacağız?
     hist = pd.DataFrame()
     if mode == "Haftalık İlerleme" and 'weekly_history' in st.session_state:
         hist = pd.DataFrame(st.session_state['weekly_history'])
@@ -226,26 +291,17 @@ elif st.session_state['page'] == 'team_detail':
         hist = st.session_state['sim_history']
     
     if not hist.empty:
-        # Takımın maçlarını bul
-        team_matches = hist[(hist['Ev'] == team) | (hist['Dep'] == team)].reset_index(drop=True)
-        
-        # Tıklanabilir tablo
-        event = st.dataframe(
-            team_matches[['Ev', 'Skor', 'Dep']],
-            on_select="rerun", selection_mode="single-row", 
-            height=600, use_container_width=True, hide_index=True
-        )
-        
+        tm = hist[(hist['Ev'] == team) | (hist['Dep'] == team)].reset_index(drop=True)
+        event = st.dataframe(tm[['Ev', 'Skor', 'Dep']], on_select="rerun", selection_mode="single-row", height=600, use_container_width=True, hide_index=True)
         if len(event.selection.rows) > 0:
-            match_data = team_matches.iloc[event.selection.rows[0]].to_dict()
-            st.session_state['last_page'] = 'team_detail' # Geri dönüş için işaret
+            match_data = tm.iloc[event.selection.rows[0]].to_dict()
+            st.session_state['last_page'] = 'team_detail'
             go_match(match_data)
             st.rerun()
-    else:
-        st.warning("Henüz oynanmış maç yok.")
+    else: st.warning("Henüz maç yok.")
 
 # =========================================================
-# MOD: HAFTALIK İLERLEME (DASHBOARD)
+# MOD: HAFTALIK İLERLEME
 # =========================================================
 elif mode == "Haftalık İlerleme" and st.session_state['page'] == 'dashboard':
     st.title("📅 Haftalık Lig Simülasyonu")
@@ -258,70 +314,53 @@ elif mode == "Haftalık İlerleme" and st.session_state['page'] == 'dashboard':
 
     if st.session_state['weekly_fixture'] is None:
         if st.button("🏁 Ligi Başlat", type="primary"):
-            # Fikstür oluştur
-            teams = list(all_teams)
-            random.shuffle(teams)
+            teams = list(all_teams); random.shuffle(teams)
             fixtures, return_matches = [], []
-            if len(teams) % 2: teams.append('Bay')
+            if len(teams)%2: teams.append('Bay')
             n = len(teams)
             for _ in range(n-1):
                 week = []
                 for i in range(n//2):
                     if teams[i] != 'Bay' and teams[n-1-i] != 'Bay': week.append((teams[i], teams[n-1-i]))
-                fixtures.append(week)
-                teams.insert(1, teams.pop())
+                fixtures.append(week); teams.insert(1, teams.pop())
             for w in fixtures: return_matches.append([(a, h) for h, a in w])
-            
             st.session_state['weekly_fixture'] = fixtures + return_matches
             st.session_state['current_week'] = 0
             st.session_state['weekly_table'] = {t: {'P':0, 'W':0, 'D':0, 'L':0, 'Pts':0, 'GF':0, 'GA':0, 'GD':0} for t in all_teams}
             st.session_state['weekly_history'] = []
             st.rerun()
     else:
-        # Kontrol Paneli
         fixtures = st.session_state['weekly_fixture']
         curr = st.session_state['current_week']
         
         c1, c2, c3 = st.columns([1, 2, 1])
         c1.metric("Hafta", f"{curr} / {len(fixtures)}")
-        
         if curr < len(fixtures):
             if c2.button(f"⚽ {curr + 1}. Haftayı Oyna", type="primary", use_container_width=True):
                 week_matches = fixtures[curr]
                 results = []
                 for h, a in week_matches:
                     vec = np.concatenate([get_team_vector(h), get_team_vector(a)]).reshape(1, -1)
-                    probs = model.predict_proba(vec)[0]
-                    res = np.random.choice([0,1,2], p=probs)
-                    
+                    probs = model.predict_proba(vec)[0]; res = np.random.choice([0,1,2], p=probs)
                     h_att = fifa_profiles.loc[h]['FIFA_Attack'] if h in fifa_profiles.index else 75
                     a_att = fifa_profiles.loc[a]['FIFA_Attack'] if a in fifa_profiles.index else 75
-                    hg = np.random.poisson((h_att/75)*1.4)
-                    ag = np.random.poisson((a_att/75)*1.0)
-                    
+                    hg = np.random.poisson((h_att/75)*1.4); ag = np.random.poisson((a_att/75)*1.0)
                     if res==2 and hg<=ag: hg=ag+1
                     elif res==0 and ag<=hg: ag=hg+1
                     elif res==1: hg=ag=int((hg+ag)/2)
                     
-                    # Verileri Üret ve KAYDET
                     stats = generate_live_stats(h, a, hg, ag)
                     h_sc = simulate_scorers(h, hg)
                     a_sc = simulate_scorers(a, ag)
                     
-                    # Tablo Güncelle
                     tbl = st.session_state['weekly_table']
-                    tbl[h]['P']+=1; tbl[a]['P']+=1
-                    tbl[h]['GF']+=hg; tbl[a]['GF']+=ag
-                    tbl[h]['GA']+=ag; tbl[a]['GA']+=hg
-                    tbl[h]['GD']+=(hg-ag); tbl[a]['GD']+=(ag-hg)
+                    tbl[h]['P']+=1; tbl[a]['P']+=1; tbl[h]['GF']+=hg; tbl[a]['GF']+=ag
+                    tbl[h]['GA']+=ag; tbl[a]['GA']+=hg; tbl[h]['GD']+=(hg-ag); tbl[a]['GD']+=(ag-hg)
                     if res==2: tbl[h]['W']+=1; tbl[h]['Pts']+=3; tbl[a]['L']+=1
                     elif res==1: tbl[h]['D']+=1; tbl[h]['Pts']+=1; tbl[a]['D']+=1; tbl[a]['Pts']+=1
                     else: tbl[a]['W']+=1; tbl[a]['Pts']+=3; tbl[h]['L']+=1
                     
-                    match_data = {
-                        'Ev': h, 'Dep': a, 'HG': hg, 'AG': ag, 'Skor': f"{hg}-{ag}",
-                        'Stats': stats, 'Ev_Goller': h_sc, 'Dep_Goller': a_sc
-                    }
+                    match_data = {'Ev': h, 'Dep': a, 'HG': hg, 'AG': ag, 'Skor': f"{hg}-{ag}", 'Stats': stats, 'Ev_Goller': h_sc, 'Dep_Goller': a_sc}
                     st.session_state['weekly_history'].append(match_data)
                     results.append(match_data)
                 
@@ -330,52 +369,46 @@ elif mode == "Haftalık İlerleme" and st.session_state['page'] == 'dashboard':
                 st.rerun()
         else:
             c2.success("Sezon Bitti!")
-            
+            # SEZON SONU ANALİZ BUTONU
+            if st.button("📊 SEZON SONU RAPORUNU GÖSTER", type="primary"):
+                st.session_state['show_analysis'] = True
+
         if c3.button("Sıfırla"):
             st.session_state['weekly_fixture'] = None
+            st.session_state['show_analysis'] = False
             st.rerun()
             
-        # Gösterim
+        # Analiz Gösterimi
+        if st.session_state.get('show_analysis'):
+            st.divider()
+            st.title("📈 Sezon Sonu Analizi")
+            t1, t2, t3 = st.tabs(["Gol Krallığı", "Gerçek vs Simülasyon", "Model Yapısı"])
+            with t1: plot_top_scorers(pd.DataFrame(st.session_state['weekly_history']))
+            with t2: 
+                sim_df = pd.DataFrame.from_dict(st.session_state['weekly_table'], orient='index')
+                plot_sim_vs_real_points(sim_df)
+            with t3: plot_feature_importance()
+            st.divider()
+
+        # Maç Sonuçları ve Tablo
         col_res, col_tab = st.columns([4, 5])
         with col_res:
             if 'last_results' in st.session_state:
                 st.subheader(f"{st.session_state['current_week']}. Hafta Sonuçları")
                 for m in st.session_state['last_results']:
-                    with st.container():
-                        # Maç Kartı
-                        st.markdown(f"""
-                        <div class="match-card">
-                            <div style="display:flex; justify-content:space-between; align-items:center;">
-                                <div style="width:40%; text-align:right;" class="team-name">{m['Ev']}</div>
-                                <div class="score-text">{m['HG']} - {m['AG']}</div>
-                                <div style="width:40%; text-align:left;" class="team-name">{m['Dep']}</div>
-                            </div>
-                        </div>
-                        """, unsafe_allow_html=True)
-                        
-                        # Detaylar Expander (Goller + İstatistikler)
-                        with st.expander("Maç Detayları & İstatistikler"):
-                            # Golcüler
-                            if m['HG'] > 0 or m['AG'] > 0:
-                                gc1, gc2 = st.columns(2)
-                                with gc1: 
-                                    for s in m['Ev_Goller']: st.caption(f"⚽ {s}")
-                                with gc2:
-                                    for s in m['Dep_Goller']: st.caption(f"⚽ {s}")
-                                st.divider()
-                            
-                            # İstatistik Barları
-                            for k, v in m['Stats'].items():
-                                draw_stat_bar(k, v[0], v[1])
+                    with st.expander(f"{m['Ev']} {m['Skor']} {m['Dep']}"):
+                        # İstatistikleri burada da göster
+                        for k, v in m['Stats'].items(): draw_stat_bar(k, v[0], v[1])
+                        c_h, c_a = st.columns(2)
+                        with c_h: 
+                            for s in m['Ev_Goller']: st.caption(s)
+                        with c_a: 
+                            for s in m['Dep_Goller']: st.caption(s)
 
         with col_tab:
             st.subheader("Canlı Puan Durumu")
             df = pd.DataFrame.from_dict(st.session_state['weekly_table'], orient='index').sort_values(by=['Pts', 'GD'], ascending=False)
-            
-            event = st.dataframe(
-                df.style.apply(lambda x: safe_style(x, df), axis=1),
-                on_select="rerun", selection_mode="single-row", height=700
-            )
+            event = st.dataframe(df.style.apply(lambda x: safe_style(x, df), axis=1), on_select="rerun", selection_mode="single-row", height=700)
             if len(event.selection.rows) > 0:
                 team = df.index[event.selection.rows[0]]
                 st.session_state['last_page'] = 'dashboard'
@@ -398,7 +431,6 @@ elif mode == "Tüm Sezonu Simüle Et" and st.session_state['page'] == 'dashboard
         for h in all_teams:
             for a in all_teams:
                 if h == a: continue
-                # (Tahmin Kodları Aynı...)
                 vec = np.concatenate([get_team_vector(h), get_team_vector(a)]).reshape(1, -1)
                 probs = model.predict_proba(vec)[0]; res = np.random.choice([0,1,2], p=probs)
                 h_att = fifa_profiles.loc[h]['FIFA_Attack'] if h in fifa_profiles.index else 75
@@ -408,38 +440,40 @@ elif mode == "Tüm Sezonu Simüle Et" and st.session_state['page'] == 'dashboard
                 elif res==0 and ag<=hg: ag=hg+1
                 elif res==1: hg=ag=int((hg+ag)/2)
                 
-                # Verileri Üret (Toplu simülasyon için de kaydet)
                 stats = generate_live_stats(h, a, hg, ag)
                 h_sc = simulate_scorers(h, hg)
                 a_sc = simulate_scorers(a, ag)
                 
-                hist.append({
-                    'Ev': h, 'Dep': a, 'HG': hg, 'AG': ag, 'Skor': f"{hg}-{ag}",
-                    'Stats': stats, 'Ev_Goller': h_sc, 'Dep_Goller': a_sc
-                })
+                hist.append({'Ev': h, 'Dep': a, 'HG': hg, 'AG': ag, 'Skor': f"{hg}-{ag}", 'Stats': stats, 'Ev_Goller': h_sc, 'Dep_Goller': a_sc})
                 
-                # Puan Tablosu
-                tbl[h]['P']+=1; tbl[a]['P']+=1
-                tbl[h]['GF']+=hg; tbl[a]['GF']+=ag; tbl[h]['GA']+=ag; tbl[a]['GA']+=hg
+                tbl[h]['P']+=1; tbl[a]['P']+=1; tbl[h]['GF']+=hg; tbl[a]['GF']+=ag; tbl[h]['GA']+=ag; tbl[a]['GA']+=hg
                 tbl[h]['GD']+=(hg-ag); tbl[a]['GD']+=(ag-hg)
                 if res==2: tbl[h]['W']+=1; tbl[h]['Pts']+=3; tbl[a]['L']+=1
                 elif res==1: tbl[h]['D']+=1; tbl[h]['Pts']+=1; tbl[a]['D']+=1; tbl[a]['Pts']+=1
                 else: tbl[a]['W']+=1; tbl[a]['Pts']+=3; tbl[h]['L']+=1
-                
-                cnt+=1; 
+                cnt+=1
                 if cnt%20==0: prog.progress(cnt/total)
         
         prog.empty()
         st.session_state['sim_table'] = pd.DataFrame.from_dict(tbl, orient='index').sort_values(by=['Pts', 'GD'], ascending=False)
         st.session_state['sim_history'] = pd.DataFrame(hist)
+        st.session_state['sim_done'] = True
+
+    if st.session_state.get('sim_done'):
+        # SEZON SONU ANALİZ BUTONU (HIZLI MOD İÇİN)
+        if st.button("📊 DETAYLI SEZON RAPORU", type="primary"):
+            st.divider()
+            st.subheader("📈 Sezon Analizi")
+            t1, t2, t3 = st.tabs(["Gol Krallığı", "Gerçek vs Simülasyon", "Model Yapısı"])
+            with t1: plot_top_scorers(st.session_state['sim_history'])
+            with t2: plot_sim_vs_real_points(st.session_state['sim_table'])
+            with t3: plot_feature_importance()
+            st.divider()
 
     if 'sim_table' in st.session_state:
         df = st.session_state['sim_table']
         st.subheader("Sezon Sonu Puan Durumu")
-        event = st.dataframe(
-            df.style.apply(lambda x: safe_style(x, df), axis=1),
-            on_select="rerun", selection_mode="single-row", height=700
-        )
+        event = st.dataframe(df.style.apply(lambda x: safe_style(x, df), axis=1), on_select="rerun", selection_mode="single-row", height=700)
         if len(event.selection.rows) > 0:
             team = df.index[event.selection.rows[0]]
             st.session_state['last_page'] = 'dashboard'
