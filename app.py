@@ -3,22 +3,24 @@ import pandas as pd
 import numpy as np
 import joblib
 import time
+import random
 
 # ---------------------------------------------------------
 # 1. SAYFA AYARLARI VE STİL
 # ---------------------------------------------------------
 st.set_page_config(page_title="PL AI Super Hub", layout="wide", page_icon="⚽")
 
-# Özel CSS Stilleri (İstatistik Barları İçin)
 st.markdown("""
 <style>
-    .stat-container { margin-bottom: 15px; }
-    .stat-header { display: flex; justify-content: space-between; font-size: 14px; font-weight: bold; margin-bottom: 5px; }
-    .stat-bar-bg { display: flex; height: 10px; background-color: #262730; border-radius: 5px; overflow: hidden; }
+    .stat-container { margin-bottom: 8px; }
+    .stat-header { display: flex; justify-content: space-between; font-size: 13px; font-weight: bold; margin-bottom: 2px; }
+    .stat-bar-bg { display: flex; height: 8px; background-color: #333; border-radius: 4px; overflow: hidden; }
     .bar-home { background-color: #4CAF50; height: 100%; }
     .bar-away { background-color: #FF5252; height: 100%; }
-    .team-header { font-size: 18px; font-weight: bold; margin-bottom: 10px; border-bottom: 2px solid #333; padding-bottom: 5px; }
-    .scorer-item { font-size: 14px; margin-bottom: 4px; color: #e0e0e0; }
+    .match-card { background-color: #1a1a1a; padding: 15px; border-radius: 10px; margin-bottom: 10px; border: 1px solid #333; }
+    .score-text { font-size: 20px; font-weight: bold; color: white; padding: 0 15px; }
+    .team-name { font-size: 16px; font-weight: 500; }
+    .scorer-item { font-size: 12px; color: #ccc; margin-bottom: 2px; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -26,12 +28,11 @@ st.markdown("""
 def safe_style(s, df):
     try:
         rank = df.index.get_loc(s.name)
-        if rank == 0: return ['background-color: #ffd700; color: black'] * len(s) # Şampiyon
-        elif rank < 4: return ['background-color: #e0f7fa; color: black'] * len(s) # UCL
-        elif rank >= len(df) - 3: return ['background-color: #ffcdd2; color: black'] * len(s) # Düşme
+        if rank == 0: return ['background-color: #ffd700; color: black'] * len(s) 
+        elif rank < 4: return ['background-color: #e0f7fa; color: black'] * len(s) 
+        elif rank >= len(df) - 3: return ['background-color: #ffcdd2; color: black'] * len(s) 
         else: return [''] * len(s)
-    except:
-        return [''] * len(s)
+    except: return [''] * len(s)
 
 # ---------------------------------------------------------
 # 2. VERİ YÜKLEME
@@ -40,11 +41,8 @@ def safe_style(s, df):
 def load_data():
     try:
         data = joblib.load('super_model.pkl')
-        return (data['model'], 
-                data['performance_profiles'], 
-                data['fifa_profiles'], 
-                data.get('team_rosters', {}), 
-                data['real_23_24_data'])
+        return (data['model'], data['performance_profiles'], data['fifa_profiles'], 
+                data.get('team_rosters', {}), data['real_23_24_data'])
     except FileNotFoundError:
         return None, None, None, None, None
 
@@ -59,28 +57,21 @@ all_teams = sorted(pd.concat([real_df['HomeTeam'], real_df['AwayTeam']]).unique(
 # ---------------------------------------------------------
 # 3. YARDIMCI MOTORLAR
 # ---------------------------------------------------------
-
 def get_team_vector(team_name):
-    # Performans
     if team_name in perf_profiles.index: perf = perf_profiles.loc[team_name].values
     else: perf = perf_profiles.mean().values 
-
-    # FIFA (18 feature hatasını önlemek için Midfield eklendi)
+    
     needed = ['FIFA_Overall', 'FIFA_Attack', 'FIFA_Midfield', 'FIFA_Defense', 'FIFA_Physical']
     if team_name in fifa_profiles.index: fifa = fifa_profiles.loc[team_name][needed].values
     else: fifa = fifa_profiles[needed].mean().values
-        
     return np.concatenate([perf, fifa])
 
 def simulate_scorers(team, goals):
-    """Kadro verisinden golcü seçer."""
     scorers = []
     if goals == 0: return []
-    
     roster = team_rosters.get(team, [])
     if not roster:
-        names = ["Forvet", "Ortasaha", "Sürpriz İsim"]
-        weights = [0.6, 0.3, 0.1]
+        names = ["Forvet", "Ortasaha", "Sürpriz"]; weights = [0.6, 0.3, 0.1]
     else:
         names = [p['Name'] for p in roster]
         finishing = np.array([p['Finishing'] for p in roster], dtype=float)
@@ -96,6 +87,7 @@ def simulate_scorers(team, goals):
     return scorers
 
 def generate_live_stats(home, away, hg, ag):
+    # İstatistikleri oluşturup sayısal olarak döndürür
     base_poss = 50
     if hg > ag: base_poss = 45
     elif ag > hg: base_poss = 55
@@ -115,7 +107,6 @@ def generate_live_stats(home, away, hg, ag):
     h_pass = h_poss*4 + np.random.randint(50,100)
     a_pass = a_poss*4 + np.random.randint(50,100)
 
-    # Değerleri sayısal olarak döndürüyoruz (Görselleştirme fonksiyonu işleyecek)
     return {
         'Topla Oynama (%)': (h_poss, a_poss),
         'Gol Beklentisi (xG)': (h_xg, a_xg),
@@ -126,22 +117,18 @@ def generate_live_stats(home, away, hg, ag):
         'Faul': (np.random.randint(4, 15), np.random.randint(4, 15))
     }
 
-# YENİ: GÜZEL İSTATİSTİK ÇUBUĞU ÇİZEN FONKSİYON
 def draw_stat_bar(stat_name, h_val, a_val):
     total = h_val + a_val
-    if total == 0: 
-        h_pct = 50
-        a_pct = 50
+    if total == 0: h_pct, a_pct = 50, 50
     else:
         h_pct = (h_val / total) * 100
         a_pct = (a_val / total) * 100
     
-    # HTML ile özel progress bar
-    html_code = f"""
+    st.markdown(f"""
     <div class="stat-container">
         <div class="stat-header">
             <span style="color: #4CAF50;">{h_val}</span>
-            <span style="color: #ccc; font-weight: normal;">{stat_name}</span>
+            <span style="color: #bbb;">{stat_name}</span>
             <span style="color: #FF5252;">{a_val}</span>
         </div>
         <div class="stat-bar-bg">
@@ -149,8 +136,7 @@ def draw_stat_bar(stat_name, h_val, a_val):
             <div class="bar-away" style="width: {a_pct}%;"></div>
         </div>
     </div>
-    """
-    st.markdown(html_code, unsafe_allow_html=True)
+    """, unsafe_allow_html=True)
 
 # ---------------------------------------------------------
 # 4. SAYFA YÖNETİMİ
@@ -160,8 +146,9 @@ if 'view_team' not in st.session_state: st.session_state['view_team'] = None
 if 'view_match' not in st.session_state: st.session_state['view_match'] = None
 
 st.sidebar.title("Menü")
-mode = st.sidebar.radio("Mod Seç:", ["Sezon Simülasyonu", "Gerçek vs Yapay Zeka"])
+mode = st.sidebar.radio("Mod Seç:", ["Haftalık İlerleme", "Tüm Sezonu Simüle Et", "Gerçek vs Yapay Zeka"])
 
+# Navigasyon
 def go_home(): st.session_state['page'] = 'dashboard'
 def go_team(t): 
     st.session_state['view_team'] = t
@@ -171,155 +158,299 @@ def go_match(m):
     st.session_state['page'] = 'match_detail'
 
 # =========================================================
-# MOD 1: SEZON SİMÜLASYONU
+# ORTAK SAYFALAR (MAÇ DETAYI VE TAKIM FİKSTÜRÜ)
 # =========================================================
-if mode == "Sezon Simülasyonu":
+
+# --- MAÇ DETAYI SAYFASI (HER İKİ MOD İÇİN ORTAK) ---
+if st.session_state['page'] == 'match_detail':
+    m = st.session_state['view_match']
+    # Nereye döneceğini belirle
+    back_target = 'team_detail' if st.session_state.get('last_page') == 'team_detail' else 'dashboard'
+    st.button("🔙 Geri Dön", on_click=lambda: st.session_state.update({'page': back_target}))
     
-    # --- MAÇ DETAYI SAYFASI ---
-    if st.session_state['page'] == 'match_detail':
-        m = st.session_state['view_match']
-        st.button("🔙 Takım Fikstürüne Dön", on_click=lambda: st.session_state.update({'page': 'team_detail'}))
-        
-        # Skorboard
-        st.markdown(f"""
-        <div style="text-align: center; background: #0e1117; padding: 25px; border: 1px solid #333; border-radius: 12px; margin-bottom: 25px; box-shadow: 0 4px 6px rgba(0,0,0,0.3);">
-            <h1 style="color: white; margin:0; font-family: sans-serif;">
-                <span style="color:#4CAF50">{m['Ev']}</span> 
-                <span style="margin: 0 15px; font-size: 1.2em;">{m['HG']} - {m['AG']}</span> 
-                <span style="color:#FF5252">{m['Dep']}</span>
-            </h1>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        c1, c2 = st.columns([1, 1], gap="large")
-        
-        # 1. GOLCÜLER (TAKIM ADI BAŞLIKLI)
-        with c1:
-            st.markdown("### ⚽ Maç Özeti")
-            st.markdown("---")
-            
-            gc1, gc2 = st.columns(2)
-            
-            # Ev Sahibi Golcüleri
-            with gc1:
-                st.markdown(f"<div class='team-header' style='color: #4CAF50;'>{m['Ev']}</div>", unsafe_allow_html=True)
-                h_scorers = simulate_scorers(m['Ev'], m['HG'])
-                if h_scorers:
-                    for s in h_scorers: st.markdown(f"<div class='scorer-item'>{s}</div>", unsafe_allow_html=True)
-                else:
-                    st.markdown("<div class='scorer-item' style='color:#666'>Gol Yok</div>", unsafe_allow_html=True)
-            
-            # Deplasman Golcüleri
-            with gc2:
-                st.markdown(f"<div class='team-header' style='color: #FF5252; text-align: right;'>{m['Dep']}</div>", unsafe_allow_html=True)
-                a_scorers = simulate_scorers(m['Dep'], m['AG'])
-                if a_scorers:
-                    for s in a_scorers: st.markdown(f"<div class='scorer-item' style='text-align: right;'>{s}</div>", unsafe_allow_html=True)
-                else:
-                    st.markdown("<div class='scorer-item' style='color:#666; text-align: right;'>Gol Yok</div>", unsafe_allow_html=True)
+    # Skorboard
+    st.markdown(f"""
+    <div style="text-align: center; background: #0e1117; padding: 20px; border: 1px solid #333; border-radius: 12px; margin-bottom: 25px;">
+        <h1 style="color: white; margin:0;">
+            <span style="color:#4CAF50">{m['Ev']}</span> 
+            <span style="margin: 0 15px;">{m['HG']} - {m['AG']}</span> 
+            <span style="color:#FF5252">{m['Dep']}</span>
+        </h1>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    c1, c2 = st.columns([1, 1], gap="large")
+    
+    # İstatistikler (Eğer kayıtlıysa kullan, yoksa üret)
+    match_stats = m.get('Stats')
+    if not match_stats:
+        match_stats = generate_live_stats(m['Ev'], m['Dep'], m['HG'], m['AG'])
 
-        # 2. İSTATİSTİKLER (GÜZEL ÇUBUKLAR)
-        with c2:
-            st.markdown("### 📊 Maç İstatistikleri")
-            st.markdown("---")
-            stats = generate_live_stats(m['Ev'], m['Dep'], m['HG'], m['AG'])
-            
-            for stat_name, values in stats.items():
-                # values = (Ev_Değeri, Dep_Değeri)
-                draw_stat_bar(stat_name, values[0], values[1])
+    # Golcüler (Eğer kayıtlıysa kullan, yoksa üret)
+    h_scorers = m.get('Ev_Goller')
+    if not h_scorers: h_scorers = simulate_scorers(m['Ev'], m['HG'])
+    
+    a_scorers = m.get('Dep_Goller')
+    if not a_scorers: a_scorers = simulate_scorers(m['Dep'], m['AG'])
 
-    # --- TAKIM FİKSTÜRÜ ---
-    elif st.session_state['page'] == 'team_detail':
-        team = st.session_state['view_team']
-        st.button("🔙 Puan Tablosuna Dön", on_click=go_home)
-        st.header(f"📅 {team} Fikstürü")
+    with c1:
+        st.subheader("📊 İstatistikler")
+        for k, v in match_stats.items():
+            draw_stat_bar(k, v[0], v[1])
+
+    with c2:
+        st.subheader("⚽ Maç Olayları")
+        gc1, gc2 = st.columns(2)
+        with gc1:
+            st.markdown(f"**{m['Ev']}**")
+            if h_scorers:
+                for s in h_scorers: st.markdown(f"<div class='scorer-item'>{s}</div>", unsafe_allow_html=True)
+            else: st.caption("-")
+        with gc2:
+            st.markdown(f"**{m['Dep']}**")
+            if a_scorers:
+                for s in a_scorers: st.markdown(f"<div class='scorer-item'>{s}</div>", unsafe_allow_html=True)
+            else: st.caption("-")
+
+# --- TAKIM FİKSTÜRÜ SAYFASI ---
+elif st.session_state['page'] == 'team_detail':
+    team = st.session_state['view_team']
+    st.button("🔙 Puan Tablosuna Dön", on_click=go_home)
+    st.header(f"📅 {team} Fikstürü")
+    
+    # Hangi modun geçmişine bakacağız?
+    hist = pd.DataFrame()
+    if mode == "Haftalık İlerleme" and 'weekly_history' in st.session_state:
+        hist = pd.DataFrame(st.session_state['weekly_history'])
+    elif mode == "Tüm Sezonu Simüle Et" and 'sim_history' in st.session_state:
+        hist = st.session_state['sim_history']
+    
+    if not hist.empty:
+        # Takımın maçlarını bul
+        team_matches = hist[(hist['Ev'] == team) | (hist['Dep'] == team)].reset_index(drop=True)
         
-        if 'sim_history' in st.session_state:
-            hist = st.session_state['sim_history']
-            team_matches = hist[(hist['Ev'] == team) | (hist['Dep'] == team)].reset_index(drop=True)
-            
-            event = st.dataframe(
-                team_matches[['Ev', 'Skor', 'Dep']],
-                on_select="rerun", selection_mode="single-row", 
-                height=600, use_container_width=True, hide_index=True
-            )
-            
-            if len(event.selection.rows) > 0:
-                match_data = team_matches.iloc[event.selection.rows[0]]
-                go_match(match_data)
-                st.rerun()
-
-    # --- DASHBOARD ---
+        # Tıklanabilir tablo
+        event = st.dataframe(
+            team_matches[['Ev', 'Skor', 'Dep']],
+            on_select="rerun", selection_mode="single-row", 
+            height=600, use_container_width=True, hide_index=True
+        )
+        
+        if len(event.selection.rows) > 0:
+            match_data = team_matches.iloc[event.selection.rows[0]].to_dict()
+            st.session_state['last_page'] = 'team_detail' # Geri dönüş için işaret
+            go_match(match_data)
+            st.rerun()
     else:
-        st.title("🏆 Premier Lig Simülasyonu (FIFA + AI)")
-        st.caption("Takımların kadro kalitesi ve geçmiş performansına göre 38 haftalık lig simüle edilir.")
+        st.warning("Henüz oynanmış maç yok.")
+
+# =========================================================
+# MOD: HAFTALIK İLERLEME (DASHBOARD)
+# =========================================================
+elif mode == "Haftalık İlerleme" and st.session_state['page'] == 'dashboard':
+    st.title("📅 Haftalık Lig Simülasyonu")
+    
+    if 'weekly_fixture' not in st.session_state:
+        st.session_state['weekly_fixture'] = None
+        st.session_state['current_week'] = 0
+        st.session_state['weekly_table'] = {t: {'P':0, 'W':0, 'D':0, 'L':0, 'Pts':0, 'GF':0, 'GA':0, 'GD':0} for t in all_teams}
+        st.session_state['weekly_history'] = []
+
+    if st.session_state['weekly_fixture'] is None:
+        if st.button("🏁 Ligi Başlat", type="primary"):
+            # Fikstür oluştur
+            teams = list(all_teams)
+            random.shuffle(teams)
+            fixtures, return_matches = [], []
+            if len(teams) % 2: teams.append('Bay')
+            n = len(teams)
+            for _ in range(n-1):
+                week = []
+                for i in range(n//2):
+                    if teams[i] != 'Bay' and teams[n-1-i] != 'Bay': week.append((teams[i], teams[n-1-i]))
+                fixtures.append(week)
+                teams.insert(1, teams.pop())
+            for w in fixtures: return_matches.append([(a, h) for h, a in w])
+            
+            st.session_state['weekly_fixture'] = fixtures + return_matches
+            st.session_state['current_week'] = 0
+            st.session_state['weekly_table'] = {t: {'P':0, 'W':0, 'D':0, 'L':0, 'Pts':0, 'GF':0, 'GA':0, 'GD':0} for t in all_teams}
+            st.session_state['weekly_history'] = []
+            st.rerun()
+    else:
+        # Kontrol Paneli
+        fixtures = st.session_state['weekly_fixture']
+        curr = st.session_state['current_week']
         
-        if st.button("🚀 SEZONU OYNAT", type="primary"):
-            table = {t: {'P':0, 'W':0, 'D':0, 'L':0, 'Pts':0, 'GF':0, 'GA':0, 'GD':0} for t in all_teams}
-            history = []
-            
-            prog = st.progress(0)
-            total_matches = len(all_teams) * (len(all_teams)-1)
-            cnt = 0
-            
-            for h in all_teams:
-                for a in all_teams:
-                    if h == a: continue
-                    
+        c1, c2, c3 = st.columns([1, 2, 1])
+        c1.metric("Hafta", f"{curr} / {len(fixtures)}")
+        
+        if curr < len(fixtures):
+            if c2.button(f"⚽ {curr + 1}. Haftayı Oyna", type="primary", use_container_width=True):
+                week_matches = fixtures[curr]
+                results = []
+                for h, a in week_matches:
                     vec = np.concatenate([get_team_vector(h), get_team_vector(a)]).reshape(1, -1)
                     probs = model.predict_proba(vec)[0]
-                    res = np.random.choice([0, 1, 2], p=probs)
+                    res = np.random.choice([0,1,2], p=probs)
                     
                     h_att = fifa_profiles.loc[h]['FIFA_Attack'] if h in fifa_profiles.index else 75
                     a_att = fifa_profiles.loc[a]['FIFA_Attack'] if a in fifa_profiles.index else 75
+                    hg = np.random.poisson((h_att/75)*1.4)
+                    ag = np.random.poisson((a_att/75)*1.0)
                     
-                    hg = np.random.poisson((h_att/75) * 1.4)
-                    ag = np.random.poisson((a_att/75) * 1.0)
+                    if res==2 and hg<=ag: hg=ag+1
+                    elif res==0 and ag<=hg: ag=hg+1
+                    elif res==1: hg=ag=int((hg+ag)/2)
                     
-                    if res == 2 and hg <= ag: hg = ag + 1
-                    elif res == 0 and ag <= hg: ag = hg + 1
-                    elif res == 1: hg = ag = int((hg+ag)/2)
+                    # Verileri Üret ve KAYDET
+                    stats = generate_live_stats(h, a, hg, ag)
+                    h_sc = simulate_scorers(h, hg)
+                    a_sc = simulate_scorers(a, ag)
                     
-                    cnt += 1
-                    history.append({'Ev': h, 'Dep': a, 'HG': hg, 'AG': ag, 'Skor': f"{hg}-{ag}"})
+                    # Tablo Güncelle
+                    tbl = st.session_state['weekly_table']
+                    tbl[h]['P']+=1; tbl[a]['P']+=1
+                    tbl[h]['GF']+=hg; tbl[a]['GF']+=ag
+                    tbl[h]['GA']+=ag; tbl[a]['GA']+=hg
+                    tbl[h]['GD']+=(hg-ag); tbl[a]['GD']+=(ag-hg)
+                    if res==2: tbl[h]['W']+=1; tbl[h]['Pts']+=3; tbl[a]['L']+=1
+                    elif res==1: tbl[h]['D']+=1; tbl[h]['Pts']+=1; tbl[a]['D']+=1; tbl[a]['Pts']+=1
+                    else: tbl[a]['W']+=1; tbl[a]['Pts']+=3; tbl[h]['L']+=1
                     
-                    table[h]['P']+=1; table[a]['P']+=1
-                    table[h]['GF']+=hg; table[a]['GF']+=ag
-                    table[h]['GA']+=ag; table[a]['GA']+=hg
-                    table[h]['GD']+=(hg-ag); table[a]['GD']+=(ag-hg)
-                    
-                    if res==2: table[h]['W']+=1; table[h]['Pts']+=3; table[a]['L']+=1
-                    elif res==1: table[h]['D']+=1; table[h]['Pts']+=1; table[a]['D']+=1; table[a]['Pts']+=1
-                    else: table[a]['W']+=1; table[a]['Pts']+=3; table[h]['L']+=1
-                    
-                    if cnt % 20 == 0: prog.progress(cnt/total_matches)
+                    match_data = {
+                        'Ev': h, 'Dep': a, 'HG': hg, 'AG': ag, 'Skor': f"{hg}-{ag}",
+                        'Stats': stats, 'Ev_Goller': h_sc, 'Dep_Goller': a_sc
+                    }
+                    st.session_state['weekly_history'].append(match_data)
+                    results.append(match_data)
+                
+                st.session_state['current_week'] += 1
+                st.session_state['last_results'] = results
+                st.rerun()
+        else:
+            c2.success("Sezon Bitti!")
             
-            prog.empty()
-            df_table = pd.DataFrame.from_dict(table, orient='index').sort_values(by=['Pts', 'GD'], ascending=False)
-            st.session_state['sim_table'] = df_table
-            st.session_state['sim_history'] = pd.DataFrame(history)
+        if c3.button("Sıfırla"):
+            st.session_state['weekly_fixture'] = None
+            st.rerun()
             
-        if 'sim_table' in st.session_state:
-            st.subheader("Puan Durumu")
-            st.info("💡 Fikstür ve detaylar için takıma tıklayın.")
+        # Gösterim
+        col_res, col_tab = st.columns([4, 5])
+        with col_res:
+            if 'last_results' in st.session_state:
+                st.subheader(f"{st.session_state['current_week']}. Hafta Sonuçları")
+                for m in st.session_state['last_results']:
+                    with st.container():
+                        # Maç Kartı
+                        st.markdown(f"""
+                        <div class="match-card">
+                            <div style="display:flex; justify-content:space-between; align-items:center;">
+                                <div style="width:40%; text-align:right;" class="team-name">{m['Ev']}</div>
+                                <div class="score-text">{m['HG']} - {m['AG']}</div>
+                                <div style="width:40%; text-align:left;" class="team-name">{m['Dep']}</div>
+                            </div>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        
+                        # Detaylar Expander (Goller + İstatistikler)
+                        with st.expander("Maç Detayları & İstatistikler"):
+                            # Golcüler
+                            if m['HG'] > 0 or m['AG'] > 0:
+                                gc1, gc2 = st.columns(2)
+                                with gc1: 
+                                    for s in m['Ev_Goller']: st.caption(f"⚽ {s}")
+                                with gc2:
+                                    for s in m['Dep_Goller']: st.caption(f"⚽ {s}")
+                                st.divider()
+                            
+                            # İstatistik Barları
+                            for k, v in m['Stats'].items():
+                                draw_stat_bar(k, v[0], v[1])
+
+        with col_tab:
+            st.subheader("Canlı Puan Durumu")
+            df = pd.DataFrame.from_dict(st.session_state['weekly_table'], orient='index').sort_values(by=['Pts', 'GD'], ascending=False)
             
-            df_show = st.session_state['sim_table']
             event = st.dataframe(
-                df_show.style.apply(lambda x: safe_style(x, df_show), axis=1),
-                on_select="rerun", selection_mode="single-row", height=600
+                df.style.apply(lambda x: safe_style(x, df), axis=1),
+                on_select="rerun", selection_mode="single-row", height=700
             )
-            
             if len(event.selection.rows) > 0:
-                selected_team = df_show.index[event.selection.rows[0]]
-                go_team(selected_team)
+                team = df.index[event.selection.rows[0]]
+                st.session_state['last_page'] = 'dashboard'
+                go_team(team)
                 st.rerun()
 
 # =========================================================
-# MOD 2: GERÇEK vs YAPAY ZEKA
+# MOD: TÜM SEZONU SİMÜLE ET (DASHBOARD)
+# =========================================================
+elif mode == "Tüm Sezonu Simüle Et" and st.session_state['page'] == 'dashboard':
+    st.title("⚡ Hızlı Simülasyon")
+    
+    if st.button("🚀 38 Haftayı Simüle Et", type="primary"):
+        tbl = {t: {'P':0, 'W':0, 'D':0, 'L':0, 'Pts':0, 'GF':0, 'GA':0, 'GD':0} for t in all_teams}
+        hist = []
+        prog = st.progress(0)
+        total = len(all_teams)*(len(all_teams)-1)
+        cnt = 0
+        
+        for h in all_teams:
+            for a in all_teams:
+                if h == a: continue
+                # (Tahmin Kodları Aynı...)
+                vec = np.concatenate([get_team_vector(h), get_team_vector(a)]).reshape(1, -1)
+                probs = model.predict_proba(vec)[0]; res = np.random.choice([0,1,2], p=probs)
+                h_att = fifa_profiles.loc[h]['FIFA_Attack'] if h in fifa_profiles.index else 75
+                a_att = fifa_profiles.loc[a]['FIFA_Attack'] if a in fifa_profiles.index else 75
+                hg = np.random.poisson((h_att/75)*1.4); ag = np.random.poisson((a_att/75)*1.0)
+                if res==2 and hg<=ag: hg=ag+1
+                elif res==0 and ag<=hg: ag=hg+1
+                elif res==1: hg=ag=int((hg+ag)/2)
+                
+                # Verileri Üret (Toplu simülasyon için de kaydet)
+                stats = generate_live_stats(h, a, hg, ag)
+                h_sc = simulate_scorers(h, hg)
+                a_sc = simulate_scorers(a, ag)
+                
+                hist.append({
+                    'Ev': h, 'Dep': a, 'HG': hg, 'AG': ag, 'Skor': f"{hg}-{ag}",
+                    'Stats': stats, 'Ev_Goller': h_sc, 'Dep_Goller': a_sc
+                })
+                
+                # Puan Tablosu
+                tbl[h]['P']+=1; tbl[a]['P']+=1
+                tbl[h]['GF']+=hg; tbl[a]['GF']+=ag; tbl[h]['GA']+=ag; tbl[a]['GA']+=hg
+                tbl[h]['GD']+=(hg-ag); tbl[a]['GD']+=(ag-hg)
+                if res==2: tbl[h]['W']+=1; tbl[h]['Pts']+=3; tbl[a]['L']+=1
+                elif res==1: tbl[h]['D']+=1; tbl[h]['Pts']+=1; tbl[a]['D']+=1; tbl[a]['Pts']+=1
+                else: tbl[a]['W']+=1; tbl[a]['Pts']+=3; tbl[h]['L']+=1
+                
+                cnt+=1; 
+                if cnt%20==0: prog.progress(cnt/total)
+        
+        prog.empty()
+        st.session_state['sim_table'] = pd.DataFrame.from_dict(tbl, orient='index').sort_values(by=['Pts', 'GD'], ascending=False)
+        st.session_state['sim_history'] = pd.DataFrame(hist)
+
+    if 'sim_table' in st.session_state:
+        df = st.session_state['sim_table']
+        st.subheader("Sezon Sonu Puan Durumu")
+        event = st.dataframe(
+            df.style.apply(lambda x: safe_style(x, df), axis=1),
+            on_select="rerun", selection_mode="single-row", height=700
+        )
+        if len(event.selection.rows) > 0:
+            team = df.index[event.selection.rows[0]]
+            st.session_state['last_page'] = 'dashboard'
+            go_team(team)
+            st.rerun()
+
+# =========================================================
+# MOD: GERÇEK VS YAPAY ZEKA
 # =========================================================
 elif mode == "Gerçek vs Yapay Zeka":
     st.title("🤖 Yapay Zeka vs Gerçek (23/24)")
-    
     @st.cache_data
     def get_real_table_cached():
         tbl = {t: {'Pts':0} for t in all_teams}
@@ -331,17 +462,15 @@ elif mode == "Gerçek vs Yapay Zeka":
                 else: tbl[a]['Pts']+=3
         return pd.DataFrame.from_dict(tbl, orient='index').sort_values(by='Pts', ascending=False)
 
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.subheader("🌍 Gerçek Puan Durumu")
-        real_table = get_real_table_cached()
-        st.dataframe(real_table.style.apply(lambda x: safe_style(x, real_table), axis=1), height=700)
-        
-    with col2:
-        st.subheader("🤖 Yapay Zeka Tahmini")
+    c1, c2 = st.columns(2)
+    with c1:
+        st.subheader("🌍 Gerçek")
+        rt = get_real_table_cached()
+        st.dataframe(rt.style.apply(lambda x: safe_style(x, rt), axis=1), height=700)
+    with c2:
+        st.subheader("🤖 Yapay Zeka")
         if 'sim_table' in st.session_state:
-            ai_table = st.session_state['sim_table'][['Pts']]
-            st.dataframe(ai_table.style.apply(lambda x: safe_style(x, ai_table), axis=1), height=700)
+            ai = st.session_state['sim_table'][['Pts']]
+            st.dataframe(ai.style.apply(lambda x: safe_style(x, ai), axis=1), height=700)
         else:
-            st.warning("Yapay zeka verisi yok. Önce 'Sezon Simülasyonu' modunda sezonu oynatın!")
+            st.warning("Veri için 'Tüm Sezonu Simüle Et' modunu kullanın.")
