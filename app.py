@@ -272,11 +272,12 @@ def plot_wdl_distribution(table_df):
     fig, ax = plt.subplots(figsize=(10, 8))
     wdl_df.plot(kind='barh', stacked=True, color=['#4CAF50', '#FFC107', '#FF5252'], ax=ax)
     
-    ax.set_title("📊 Takım Karneleri (G / B / M)")
+    ax.set_title("📊 Takım Karneleri (Galibiyet / Beraberlik / Mağlubiyet)")
     ax.set_xlabel("Maç Sayısı")
     ax.legend(["Galibiyet", "Beraberlik", "Mağlubiyet"])
     st.pyplot(fig)
-# ----------------------------------------------
+# --------------------------------------------------------------------------------
+
 
 def plot_top_scorers(history_df):
     all_goals = []
@@ -386,47 +387,56 @@ if st.session_state['page'] == 'match_detail':
         def get_formation(team_name):
             roster = team_rosters.get(team_name, [])
             
-            # Tüm oyuncuları al
-            all_players = []
-            if roster:
-                all_players = [p['Name'] for p in roster]
-            
-            # Yetersizse tamamla (HATA ÖNLEYİCİ)
-            while len(all_players) < 11:
-                all_players.append("Yedek")
-
+            # Yardımcı: İsim parçalama
             def extract_info(full_name):
                 parts = full_name.split()
                 surname = parts[-1] if len(parts) > 0 else "?"
                 initial = surname[0]
                 return (initial, surname)
 
-            # Mevkilere ayır (Eğer mevki varsa)
+            # 1. Tüm oyuncuları bir havuza at (Yedek listesi)
+            all_players_pool = []
+            if roster:
+                all_players_pool = [extract_info(p['Name']) for p in roster]
+            
+            # Havuz boşsa (Hiç veri yoksa) hata vermesin diye doldur
+            while len(all_players_pool) < 11:
+                all_players_pool.append(("Y", "Yedek"))
+
+            # 2. Önce mevkileri doldurmaya çalış
             gks = [extract_info(p['Name']) for p in roster if p.get('Position') == 'GK']
-            dfs = [extract_info(p['Name']) for p in roster if p.get('Position') in ['DF', 'CB', 'LB', 'RB']]
+            dfs = [extract_info(p['Name']) for p in roster if p.get('Position') in ['DF', 'CB', 'LB', 'RB', 'LWB', 'RWB']]
             mfs = [extract_info(p['Name']) for p in roster if p.get('Position') in ['MF', 'CM', 'CDM', 'CAM', 'LM', 'RM']]
             fws = [extract_info(p['Name']) for p in roster if p.get('Position') in ['FW', 'ST', 'CF', 'RW', 'LW']]
             
-            # Geriye kalanları havuza at (Pozisyonu olmayanlar)
+            # 3. Kullanılanları işaretle
             used_names = set([x[1] for x in gks + dfs + mfs + fws])
-            pool = [extract_info(p['Name']) for p in roster if extract_info(p['Name'])[1] not in used_names]
+            
+            # 4. Kullanılmayanları ayır (Mevkisi dolmayan yerlere bunları koyacağız)
+            available_pool = [p for p in all_players_pool if p[1] not in used_names]
 
-            # Eksikleri havuzdan tamamla
+            # 5. Boşlukları doldurma fonksiyonu
             def fill_slots(current_list, target_count, label):
-                while len(current_list) < target_count:
-                    if pool:
-                        current_list.append(pool.pop(0))
+                # Önce eldeki mevki oyuncularını al
+                result = current_list[:]
+                # Eksik varsa havuzdan çek
+                while len(result) < target_count:
+                    if available_pool:
+                        result.append(available_pool.pop(0))
                     else:
-                        # Havuz da bittiyse (Çok nadir)
-                        current_list.append((label[0], label))
-                return current_list
+                        # Havuz da bittiyse (Çok nadir) label kullan
+                        result.append((label[0], label))
+                return result
 
+            # 6. Son 11'i oluştur
             final_gk = fill_slots(gks, 1, "Kaleci")[:1]
             final_df = fill_slots(dfs, 4, "Defans")[:4]
             final_mf = fill_slots(mfs, 4, "Ortasaha")[:4]
             final_fw = fill_slots(fws, 2, "Forvet")[:2]
             
             return final_gk, final_df, final_mf, final_fw
+        # ----------------------------------------------------------------------------------
+
 
         ev_gk, ev_df, ev_mf, ev_fw = get_formation(m['Ev'])
         dep_gk, dep_df, dep_mf, dep_fw = get_formation(m['Dep'])
