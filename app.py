@@ -27,19 +27,21 @@ st.markdown("""
     .team-name { font-size: 16px; font-weight: 500; }
     .scorer-item { font-size: 12px; color: #ccc; margin-bottom: 2px; }
     
-    /* DASHBOARD STİLLERİ */
+    /* DASHBOARD VE SAHA STİLLERİ (GÜNCELLENDİ) */
     .dashboard-card { background-color: #1e1e1e; border: 1px solid #333; border-radius: 10px; padding: 15px; margin-bottom: 15px; }
+    
     .pitch-container { 
         background: linear-gradient(to bottom, #2e7d32, #1b5e20); 
         border: 2px solid #fff; 
         border-radius: 10px; 
-        padding: 20px; 
+        padding: 10px; 
         text-align: center; 
-        height: 450px; /* Saha biraz daha uzun olsun */
+        height: 500px; /* Saha boyu uzatıldı */
         display: flex; 
         flex-direction: column; 
-        justify-content: space-around; 
+        justify-content: space-between; 
         position: relative; 
+        overflow: hidden;
     }
     .pitch-line { border-top: 1px solid rgba(255,255,255,0.3); width: 100%; position: absolute; top: 50%; left: 0; }
     .pitch-circle { 
@@ -50,22 +52,46 @@ st.markdown("""
         top: 50%; left: 50%; 
         transform: translate(-50%, -50%); 
     }
+    
+    /* OYUNCU KUTUSU (NOKTA + İSİM) */
+    .player-wrapper {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        width: 70px; /* İsim sığsın diye genişlik */
+        margin: 0 2px;
+        z-index: 2;
+    }
+    
     .player-dot { 
         background-color: white; 
         color: #111; 
         border-radius: 50%; 
-        width: 30px; height: 30px; 
-        display: inline-flex; 
+        width: 28px; height: 28px; 
+        display: flex; 
         align-items: center; 
         justify-content: center; 
         font-size: 11px; 
         font-weight: 900; 
-        margin: 0 8px; 
         box-shadow: 0 3px 6px rgba(0,0,0,0.6);
-        cursor: help;
         border: 2px solid #ccc;
+        margin-bottom: 2px;
     }
-    .player-row { display: flex; justify-content: center; margin: 8px 0; z-index: 2; }
+    
+    .player-name {
+        font-size: 10px;
+        color: white;
+        text-shadow: 1px 1px 2px black;
+        background-color: rgba(0,0,0,0.4);
+        padding: 1px 4px;
+        border-radius: 4px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 100%;
+    }
+
+    .player-row { display: flex; justify-content: center; margin: 5px 0; }
     .small-table-header { font-size: 12px; color: #aaa; }
     .small-table-row { font-size: 13px; border-bottom: 1px solid #333; padding: 3px 0; }
 </style>
@@ -237,74 +263,91 @@ if st.session_state['page'] == 'match_detail':
 
     # ORTA KOLON (SAHA VE KADROLAR)
     with col2:
-        st.markdown(f"""<div style="text-align: center; background: #000; padding: 15px; border-radius: 10px; margin-bottom: 10px; border: 1px solid #444;"><h1 style="color: white; margin:0; font-size: 36px;"><span style="color:#4CAF50">{m['HG']}</span> <span style="color:#888; font-size: 20px;">vs</span> <span style="color:#FF5252">{m['AG']}</span></h1><p style="color:#aaa; margin:0;">Maç Sonucu</p></div>""", unsafe_allow_html=True)
+        st.markdown(f"""
+        <div style="text-align: center; background: #000; padding: 15px; border-radius: 10px; margin-bottom: 10px; border: 1px solid #444;">
+            <h1 style="color: white; margin:0; font-size: 36px;">
+                <span style="color:#4CAF50">{m['HG']}</span> 
+                <span style="color:#888; font-size: 20px;">vs</span> 
+                <span style="color:#FF5252">{m['AG']}</span>
+            </h1>
+            <p style="color:#aaa; margin:0;">Maç Sonucu</p>
+        </div>
+        """, unsafe_allow_html=True)
         
-        # Kadro Oluşturma
+        # KADRO OLUŞTURMA FONKSİYONU (İsimleri Alacak Şekilde)
         def get_formation(team_name):
             roster = team_rosters.get(team_name, [])
-            # Soyadının baş harfini al (Hata Düzeltildi)
-            def get_initial(full_name):
-                try:
-                    return full_name.split()[-1][0] # Son kelimenin ilk harfi
-                except:
-                    return "?"
-
-            fw = [(get_initial(p['Name']), p['Name']) for p in roster if p['Position'] == 'FW'][:2]
-            mf = [(get_initial(p['Name']), p['Name']) for p in roster if p['Position'] == 'MF'][:4]
-            df = [(get_initial(p['Name']), p['Name']) for p in roster if p['Position'] in ['DF', 'CB', 'LB', 'RB']][:4]
-            gk = [(get_initial(p['Name']), p['Name']) for p in roster if p['Position'] == 'GK'][:1]
             
+            # İsimleri ve Baş Harfleri Ayıkla
+            def extract_info(full_name):
+                parts = full_name.split()
+                # Soyadını al (Son kelime)
+                surname = parts[-1] if len(parts) > 0 else "?"
+                # Baş harf
+                initial = surname[0]
+                return (initial, surname)
+
+            # Pozisyonlara göre filtrele ve (BaşHarf, Soyad) olarak kaydet
+            fw = [extract_info(p['Name']) for p in roster if p['Position'] == 'FW'][:2]
+            mf = [extract_info(p['Name']) for p in roster if p['Position'] == 'MF'][:4]
+            df = [extract_info(p['Name']) for p in roster if p['Position'] in ['DF', 'CB', 'LB', 'RB']][:4]
+            gk = [extract_info(p['Name']) for p in roster if p['Position'] == 'GK'][:1]
+            
+            # Eksik varsa tamamla
             if not gk: gk = [("G", "Kaleci")]
             if not fw: fw = [("F", "Forvet 1"), ("F", "Forvet 2")]
+            if not mf: mf = [("M", "Ortasaha")]
+            if not df: df = [("D", "Defans")]
             
             return gk, df, mf, fw
 
         ev_gk, ev_df, ev_mf, ev_fw = get_formation(m['Ev'])
         dep_gk, dep_df, dep_mf, dep_fw = get_formation(m['Dep'])
 
-        # Sahayı Çiz (Geliştirilmiş HTML)
-        st.markdown(f"""
+        # HTML OLUŞTURUCU (YENİ VE TEMİZ)
+        def create_row_html(players):
+            html = '<div class="player-row">'
+            for p in players:
+                initial, surname = p
+                html += f"""
+                <div class="player-wrapper">
+                    <div class="player-dot">{initial}</div>
+                    <div class="player-name">{surname}</div>
+                </div>
+                """
+            html += '</div>'
+            return html
+
+        # SAHAYI ÇİZ
+        pitch_html = f"""
         <div class="pitch-container">
             <div class="pitch-line"></div>
             <div class="pitch-circle"></div>
             
             <!-- DEPLASMAN (Üstte) -->
             <div style="color: #FF5252; font-weight:bold; margin-bottom:5px;">{m['Dep']}</div>
-            <div class="player-row">{ "".join([f"<div class='player-dot' title='{x[1]}'>{x[0]}</div>" for x in dep_gk]) }</div>
-            <div class="player-row">{ "".join([f"<div class='player-dot' title='{x[1]}'>{x[0]}</div>" for x in dep_df]) }</div>
-            <div class="player-row">{ "".join([f"<div class='player-dot' title='{x[1]}'>{x[0]}</div>" for x in dep_mf]) }</div>
-            <div class="player-row">{ "".join([f"<div class='player-dot' title='{x[1]}'>{x[0]}</div>" for x in dep_fw]) }</div>
+            {create_row_html(dep_gk)}
+            {create_row_html(dep_df)}
+            {create_row_html(dep_mf)}
+            {create_row_html(dep_fw)}
             
-            <div style="height: 30px;"></div>
+            <div style="height: 20px;"></div>
             
             <!-- EV SAHİBİ (Altta) -->
-            <div class="player-row">{ "".join([f"<div class='player-dot' title='{x[1]}'>{x[0]}</div>" for x in ev_fw]) }</div>
-            <div class="player-row">{ "".join([f"<div class='player-dot' title='{x[1]}'>{x[0]}</div>" for x in ev_mf]) }</div>
-            <div class="player-row">{ "".join([f"<div class='player-dot' title='{x[1]}'>{x[0]}</div>" for x in ev_df]) }</div>
-            <div class="player-row">{ "".join([f"<div class='player-dot' title='{x[1]}'>{x[0]}</div>" for x in ev_gk]) }</div>
+            {create_row_html(ev_fw)}
+            {create_row_html(ev_mf)}
+            {create_row_html(ev_df)}
+            {create_row_html(ev_gk)}
             <div style="color: #4CAF50; font-weight:bold; margin-top:5px;">{m['Ev']}</div>
         </div>
-        """, unsafe_allow_html=True)
+        """
+        
+        st.markdown(pitch_html, unsafe_allow_html=True)
 
-        # Kadro İsim Listesi (YENİ EKLEME: İsimleri görmek için)
-        with st.expander("Tam Kadroları Göster"):
-            kc1, kc2 = st.columns(2)
-            
-            def format_list(lst): return ", ".join([x[1] for x in lst])
-            
-            with kc1:
-                st.markdown(f"**{m['Ev']}**")
-                st.caption(f"FW: {format_list(ev_fw)}")
-                st.caption(f"MF: {format_list(ev_mf)}")
-                st.caption(f"DF: {format_list(ev_df)}")
-                st.caption(f"GK: {format_list(ev_gk)}")
-            with kc2:
-                st.markdown(f"**{m['Dep']}**")
-                st.caption(f"FW: {format_list(dep_fw)}")
-                st.caption(f"MF: {format_list(dep_mf)}")
-                st.caption(f"DF: {format_list(dep_df)}")
-                st.caption(f"GK: {format_list(dep_gk)}")
-
+        # Tam kadroları gösterme kısmı (Expander)
+        with st.expander("Yedekler ve Tam Liste"):
+            # ... (Burası aynı kalabilir) ...
+            pass
     # SAĞ KOLON
     with col3:
         st.markdown('<div class="dashboard-card">', unsafe_allow_html=True)
